@@ -193,6 +193,8 @@
   let currentScreen = 'splash';
   let navStack = [];
   let currentRole = null;
+  // Track the logged-in user so student screens are data-driven (not hardcoded to "أحمد")
+  let currentUserId = null;
 
   const ROLE_PREFIX = { student: 's-', volunteer: 'v-', admin: 'a-' };
   const PUBLIC = ['login', 'otp', 'splash'];
@@ -323,6 +325,20 @@
     return u ? u.name : 'طالب';
   }
 
+  // Resolve the currently logged-in user. Falls back to first matching user
+  // by role (for quick-login / demo) so screens are always data-driven.
+  function currentUser() {
+    if (currentUserId != null) {
+      const u = store.users.find(x => x.id === currentUserId);
+      if (u) return u;
+    }
+    if (currentRole) {
+      const byRole = store.users.find(u => u.role === currentRole);
+      if (byRole) { currentUserId = byRole.id; return byRole; }
+    }
+    return store.users[0];
+  }
+
   function currentBatch() {
     return store.batches.find(b => b.id === store.currentSession.batchId) || store.batches[0];
   }
@@ -382,7 +398,7 @@
       case 's-explore':       renderExplore();           break;
       case 's-onboard':       renderStudentOnboard();    break;
       case 's-excuse':        renderExcuse();            break;
-      case 'v-home':          /* static */               break;
+      case 'v-home':          renderVolHome();           break;
       case 'v-attendance':    renderVolAttendance();     break;
       case 'v-batches':       renderVolBatches();        break;
       case 'v-report':        renderVolReport();         break;
@@ -401,7 +417,7 @@
 
   // ── STUDENT HOME
   function renderStudentHome() {
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
+    const me = currentUser();
     const st = attStats(me.id);
     const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     setTxt('sh-student-name', (me.name || 'طالب').split(' ')[0] + ' 👋');
@@ -481,8 +497,14 @@
   function renderAttLog() {
     const el = document.getElementById('sal-list');
     if (!el) return;
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
-    const sessions = (store.attendance[me.id] || []).filter(s => attFilter === 'all' || s.status === attFilter);
+    const me = currentUser();
+    const all = store.attendance[me.id] || [];
+    // Summary counts (always reflect the full record, independent of the filter)
+    const setCount = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+    setCount('sal-pres', all.filter(s => s.status === 'present').length);
+    setCount('sal-abs', all.filter(s => s.status === 'absent').length);
+    setCount('sal-late', all.filter(s => s.status === 'late').length);
+    const sessions = all.filter(s => attFilter === 'all' || s.status === attFilter);
     if (!sessions.length) {
       el.innerHTML = emptyState('fact_check', attFilter === 'all' ? 'لا توجد محاضرات مسجلة' : 'لا توجد نتائج بهذا الفلتر', 'سجل الحضور يظهر بعد كل محاضرة');
       return;
@@ -518,7 +540,7 @@
   function renderCourseDetail() {
     const c = store.courses[0];
     if (!c) return;
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
+    const me = currentUser();
     const st = attStats(me.id);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('cd-title', c.title);
@@ -555,7 +577,7 @@
 
   // ── STUDENT POINTS
   function renderStudentPoints() {
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
+    const me = currentUser();
     const pts = me.points || 0;
     const lv = levelFromPoints(pts);
     const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
@@ -606,7 +628,12 @@
   function renderStudentCerts() {
     const el = document.getElementById('scerts-list');
     if (!el) return;
-    const myCerts = store.certs.filter(c => c.student.includes('أحمد'));
+    const me = currentUser();
+    // Match by the logged-in student's name (certs store the name for display),
+    // falling back to any cert whose student shares the first name token.
+    const myCerts = store.certs.filter(c =>
+      c.student === me.name || c.student.includes((me.name || '').split(' ')[0])
+    );
     if (myCerts.length === 0) {
       el.innerHTML = emptyState('workspace_premium', 'لا توجد شهادات بعد', 'أكمل حضور الكورسات بنسبة 75% أو أكثر لإصدار شهادتك تلقائياً');
       return;
@@ -634,6 +661,27 @@
     `).join('');
   }
 
+  // BUG-08 fix: mark all notifications as read (student + admin)
+  window.markAllNotifsRead = function (scope) {
+    if (scope === 'admin') {
+      // Admin notifications are rendered from a local array — reflect the read
+      // state by clearing the unread dots in the DOM (state isn't persisted
+      // because the admin list is demo/static for now).
+      document.querySelectorAll('#anotif-list > div').forEach(row => {
+        row.classList.remove('bg-primary/6', 'border', 'border-primary/15');
+        row.classList.add('bg-white');
+        const dot = row.querySelector('.w-2.h-2.rounded-full');
+        if (dot) dot.remove();
+      });
+      showToast('تم تحديد الكل كمقروء', 'success');
+      return;
+    }
+    let n = 0;
+    store.notifications.forEach(x => { if (x.unread) { x.unread = false; n++; } });
+    if (n) { save(); renderStudentNotifs(); }
+    showToast(n ? 'تم تحديد ' + n + ' إشعار كمقروء' : 'لا توجد إشعارات غير مقروءة', n ? 'success' : 'info');
+  };
+
   // ── STUDENT NOTIFICATIONS
   function renderStudentNotifs() {
     const el = document.getElementById('snotif-list');
@@ -658,7 +706,14 @@
   function renderExplore() {
     const el = document.getElementById('explore-list');
     if (!el) return;
-    el.innerHTML = store.courses.map(c => `
+    const searchEl = document.getElementById('explore-search');
+    const q = (searchEl && searchEl.value || '').trim();
+    const courses = store.courses.filter(c => !q || c.title.includes(q) || (c.cat || '').includes(q));
+    if (!courses.length) { el.innerHTML = emptyState('search', 'لا توجد نتائج', 'جرّب كلمة بحث أخرى'); return; }
+    const me = currentUser();
+    el.innerHTML = courses.map(c => {
+      const enrolled = !!(me && me.enrolledCourses && me.enrolledCourses.indexOf(c.id) !== -1);
+      return `
       <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
         <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${c.color}18;">
           <span class="material-symbols-outlined" style="color:${c.color};">${c.icon}</span>
@@ -667,10 +722,30 @@
           <p class="font-bold text-on-surface text-sm">${escapeHtml(c.title)}</p>
           <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.enrolled} مشترك</p>
         </div>
-        <button onclick="showToast('تم التسجيل في الكورس!','success')" class="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-full tap">تسجيل</button>
+        <button onclick="enrollCourse(${c.id})" class="px-3 py-1.5 text-white text-xs font-bold rounded-full tap" style="background:${enrolled ? '#00554e' : '#00288e'};">${enrolled ? 'مسجّل ✓' : 'تسجيل'}</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
+
+  // BUG-07 fix: real enrollment — bumps the course count and records it on the user
+  window.enrollCourse = function (courseId) {
+    const c = store.courses.find(x => x.id === courseId);
+    if (!c) return;
+    const me = currentUser();
+    if (!me.enrolledCourses) me.enrolledCourses = [];
+    if (me.enrolledCourses.indexOf(courseId) !== -1) {
+      showToast('أنت مسجّل في هذا الكورس بالفعل', 'info');
+      return;
+    }
+    me.enrolledCourses.push(courseId);
+    c.enrolled = (c.enrolled || 0) + 1;
+    store.auditLog.unshift({ icon: 'how_to_reg', text: 'تسجيل في كورس: ' + c.title, time: 'الآن', color: '#00288e' });
+    save();
+    renderExplore();
+    haptic(5);
+    showToast('تم التسجيل في «' + c.title + '»!', 'success');
+  };
 
   // ── STUDENT ONBOARDING
   const BRANCHES = ['وسط البلد', 'مدينة نصر', 'الجيزة', 'الإسكندرية', 'المقر الرئيسي'];
@@ -724,7 +799,7 @@
   function renderExcuse() {
     const sel = document.getElementById('exc-session');
     if (!sel) return;
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
+    const me = currentUser();
     const recs = store.attendance[me.id] || [];
     const missed = recs.map((r, i) => ({ n: i + 1, date: r.date, status: r.status }))
       .filter(x => x.status === 'absent' || x.status === 'late');
@@ -754,6 +829,27 @@
     showToast('أُرسل طلب العذر للمراجعة', 'success');
     setTimeout(() => pop(), 900);
   };
+
+  /* ── VOLUNTEER HOME (data-driven KPIs) */
+  function renderVolHome() {
+    // Aggregate across all batches the volunteer teaches
+    const studentIds = {};
+    let present = 0, absent = 0;
+    store.batches.forEach(b => {
+      b.studentIds.forEach(sid => {
+        studentIds[sid] = true;
+        const recs = store.attendance[sid] || [];
+        recs.forEach(r => {
+          if (r.status === 'present' || r.status === 'late') present++;
+          else if (r.status === 'absent') absent++;
+        });
+      });
+    });
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('vh-total', Object.keys(studentIds).length);
+    set('vh-present', present);
+    set('vh-absent', absent);
+  }
 
   /* ── VOLUNTEER ATTENDANCE */
   function renderVolAttendance() {
@@ -970,7 +1066,11 @@
     if (!el) return;
     if (!store.courses.length) { el.innerHTML = emptyState('school', 'لا توجد كورسات بعد', 'أنشئ أول كورس لبدء التسجيل'); return; }
     el.innerHTML = store.courses.map(c => {
-      const batch = store.batches.find(b => b.courseId === c.id);
+      const courseBatches = store.batches.filter(b => b.courseId === c.id);
+      // Compute average attendance across all students in this course's batches
+      let sum = 0, n = 0;
+      courseBatches.forEach(b => b.studentIds.forEach(sid => { sum += attStats(sid).pct; n++; }));
+      const avg = n ? Math.round(sum / n) : 0;
       return `
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm">
           <div class="h-1.5" style="background:${c.color};"></div>
@@ -983,16 +1083,16 @@
                 <div><p class="font-bold text-on-surface text-sm">${escapeHtml(c.title)}</p><p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.sessions} محاضرات</p></div>
               </div>
               <div class="flex items-center gap-1">
-                <button onclick="editCourse(${c.id})" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined text-sm text-on-surface-variant">edit</span></button>
-                <button onclick="deleteCourse(${c.id})" class="w-8 h-8 rounded-full flex items-center justify-center tap" style="background:rgba(186,26,26,0.08);"><span class="material-symbols-outlined text-sm" style="color:#ba1a1a;">delete</span></button>
+                <button onclick="editCourse(${c.id})" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tap" aria-label="تعديل الكورس"><span class="material-symbols-outlined text-sm text-on-surface-variant">edit</span></button>
+                <button onclick="deleteCourse(${c.id})" class="w-8 h-8 rounded-full flex items-center justify-center tap" style="background:rgba(186,26,26,0.08);" aria-label="حذف الكورس"><span class="material-symbols-outlined text-sm" style="color:#ba1a1a;">delete</span></button>
               </div>
             </div>
             <div class="flex gap-3 border-t border-outline-variant/30 pt-3">
               <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${c.enrolled}</p><p class="text-xs text-on-surface-variant">مشترك</p></div>
               <div class="w-px bg-outline-variant/40"></div>
-              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${batch ? 1 : 0}</p><p class="text-xs text-on-surface-variant">دفعة</p></div>
+              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${courseBatches.length}</p><p class="text-xs text-on-surface-variant">دفعة</p></div>
               <div class="w-px bg-outline-variant/40"></div>
-              <div class="flex-1 text-center"><p class="text-lg font-bold" style="color:#00554e;">82%</p><p class="text-xs text-on-surface-variant">متوسط حضور</p></div>
+              <div class="flex-1 text-center"><p class="text-lg font-bold" style="color:#00554e;">${avg}%</p><p class="text-xs text-on-surface-variant">متوسط حضور</p></div>
             </div>
           </div>
         </div>
@@ -1032,20 +1132,80 @@
 
     const pel = document.getElementById('apoints-list');
     if (pel) {
-      pel.innerHTML = store.pointsRules.map(r => `
+      pel.innerHTML = store.pointsRules.map((r, i) => `
         <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
             <span class="material-symbols-outlined text-primary">${r.icon}</span>
           </div>
-          <p class="flex-1 text-sm font-semibold text-on-surface">${r.rule}</p>
+          <p class="flex-1 text-sm font-semibold text-on-surface">${escapeHtml(r.rule)}</p>
           <div class="flex items-center gap-2">
-            <input type="number" value="${r.pts}" class="w-14 h-9 bg-surface-container rounded-xl text-center text-sm font-bold text-on-surface outline-none border border-outline-variant/40">
+            <input type="number" min="0" data-rule="${i}" value="${r.pts}" class="rule-pts w-14 h-9 bg-surface-container rounded-xl text-center text-sm font-bold text-on-surface outline-none border border-outline-variant/40">
             <span class="text-xs text-on-surface-variant font-semibold">نقطة</span>
           </div>
         </div>
       `).join('');
     }
   }
+
+  // BUG-05 fix: persist edited point rules from the inputs
+  window.savePointRules = function () {
+    const inputs = document.querySelectorAll('#apoints-list .rule-pts');
+    let changed = 0;
+    inputs.forEach(inp => {
+      const i = +inp.dataset.rule;
+      const v = parseInt(inp.value, 10);
+      if (!isNaN(v) && v >= 0 && store.pointsRules[i] && store.pointsRules[i].pts !== v) {
+        store.pointsRules[i].pts = v;
+        changed++;
+      }
+    });
+    if (changed) {
+      store.auditLog.unshift({ icon: 'tune', text: 'تحديث قواعد النقاط (' + changed + ' قاعدة)', time: 'الآن', color: '#515f74' });
+      save();
+    }
+    renderAdminCerts();
+    showToast(changed ? 'تم حفظ قواعد النقاط ✓' : 'لا توجد تغييرات للحفظ', changed ? 'success' : 'info');
+  };
+
+  // BUG-05 fix: issue certificates for students meeting the 75% attendance threshold
+  window.issueEligibleCerts = function () {
+    const CERT_THRESHOLD = 75;
+    let issued = 0;
+    const existingKeys = {};
+    store.certs.forEach(c => { existingKeys[c.student + '|' + c.course] = true; });
+    // For every batch, compute each student's attendance and issue when eligible
+    store.batches.forEach(batch => {
+      const course = store.courses.find(c => c.id === batch.courseId);
+      if (!course) return;
+      batch.studentIds.forEach(sid => {
+        const u = store.users.find(x => x.id === sid);
+        if (!u) return;
+        const st = attStats(sid);
+        if (st.total === 0 || st.pct < CERT_THRESHOLD) return;
+        const key = u.name + '|' + course.title;
+        if (existingKeys[key]) return;
+        const seq = String(store.certs.length + 1001 + issued).padStart(4, '0');
+        store.certs.push({
+          id: Date.now() + issued,
+          student: u.name,
+          course: course.title,
+          date: new Date().toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' }),
+          no: 'RTC-2026-' + seq,
+          att: st.pct,
+          status: 'issued'
+        });
+        existingKeys[key] = true;
+        issued++;
+      });
+    });
+    if (issued) {
+      store.auditLog.unshift({ icon: 'workspace_premium', text: 'إصدار ' + issued + ' شهادة للمستوفين شروط الحضور', time: 'الآن', color: '#854d0e' });
+      save();
+      renderAdminCerts();
+      renderAdminHome();
+    }
+    showToast(issued ? 'تم إصدار ' + issued + ' شهادة ✓' : 'لا يوجد طلاب جدد مستوفون للشرط', issued ? 'success' : 'info');
+  };
 
   /* ── ADMIN BRANCHES */
   function renderBranches() {
@@ -1123,12 +1283,61 @@
     showToast('تم تصدير التقرير', 'success');
   };
 
+  // BUG-01 fix: generate a real printable report. We open a styled window and
+  // trigger the browser's print dialog, which lets the user "Save as PDF".
+  // This avoids a heavy PDF dependency (works offline, respects the CSP) and
+  // produces an actual file rather than a fake toast.
   window.exportPdf = function () {
+    const batch = currentBatch();
+    const course = store.courses.find(c => c.id === batch.courseId) || {};
+    const today = new Date().toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+    const rows = batch.studentIds.map(sid => {
+      const u = store.users.find(x => x.id === sid) || { name: userName(sid) };
+      const st = attStats(sid);
+      const statusCls = st.pct >= 75 ? 'ok' : (st.pct >= 50 ? 'warn' : 'bad');
+      return '<tr><td>' + escapeHtml(u.name) + '</td><td class="num">' + st.pres +
+        '</td><td class="num">' + (st.total - st.pres) + '</td><td class="num ' + statusCls + '">' +
+        st.pct + '%</td></tr>';
+    }).join('');
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      showToast('اسمح بالنوافذ المنبثقة لتصدير PDF', 'error');
+      return;
+    }
+    w.document.write([
+      '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8">',
+      '<title>تقرير الحضور — ', escapeHtml(batch.name), '</title>',
+      '<style>',
+      '@page{size:A4;margin:18mm;}body{font-family:"IBM Plex Sans Arabic",Arial,sans-serif;color:#191c1e;margin:0;}',
+      'h1{color:#00288e;font-size:22px;margin:0 0 4px;}.meta{color:#515f74;font-size:13px;margin-bottom:18px;}',
+      'table{width:100%;border-collapse:collapse;font-size:13px;}',
+      'th{background:#00288e;color:#fff;padding:10px;text-align:right;}',
+      'td{padding:9px 10px;border-bottom:1px solid #e0e3e5;}',
+      '.num{text-align:center;font-family:monospace;}.ok{color:#00554e;font-weight:bold;}',
+      '.warn{color:#854d0e;font-weight:bold;}.bad{color:#ba1a1a;font-weight:bold;}',
+      'tr:nth-child(even){background:#f7f9fb;}',
+      '.foot{margin-top:24px;color:#757684;font-size:11px;text-align:center;}',
+      '</style></head><body>',
+      '<h1>تقرير الحضور — ', escapeHtml(batch.name), '</h1>',
+      '<div class="meta">', escapeHtml(course.title || ''), ' · ', escapeHtml(batch.schedule || ''),
+      ' · تاريخ التصدير: ', escapeHtml(today), '</div>',
+      '<table><thead><tr><th>الطالب</th><th>حضور</th><th>غياب</th><th>نسبة الحضور</th></tr></thead>',
+      '<tbody>', rows, '</tbody></table>',
+      '<div class="foot">جمعية رسالة — مركز التدريب والتطوير · مسار RTC</div>',
+      '</body></html>'
+    ].join(''));
+    w.document.close();
+    // Trigger the print dialog once the new window is ready
+    w.onload = function () { try { w.focus(); w.print(); } catch (e) {} };
+    // Fallback for browsers that fire onload before our content is parsed
+    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 400);
+
     store.exports = store.exports || [];
-    store.exports.unshift({ icon: 'picture_as_pdf', title: 'تصدير PDF — حضور دفعة A', time: 'الآن', size: 'مستند' });
+    store.exports.unshift({ icon: 'picture_as_pdf', title: 'تصدير PDF — ' + batch.name, time: 'الآن', size: (batch.studentIds.length || 0) + ' صف' });
     save();
     renderExport();
-    showToast('جاري توليد ملف PDF...', 'info');
+    showToast('افتح نافذة الطباعة واحفظ كـ PDF', 'success');
   };
 
   /* ── ADMIN BROADCAST */
@@ -1241,6 +1450,10 @@
   window.quickLogin = function (role) {
     currentRole = role;
     localStorage.setItem('rtc_role_v2', role);
+    // Pick the first user matching the chosen role so screens are data-driven
+    const u = store.users.find(x => x.role === role);
+    currentUserId = u ? u.id : (store.users[0] && store.users[0].id);
+    if (currentUserId != null) localStorage.setItem('rtc_uid_v2', String(currentUserId));
     const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
     navigate(homes[role]);
     showToast('مرحباً! تم تسجيل الدخول كـ ' + { student: 'طالب', volunteer: 'متطوع', admin: 'مشرف' }[role], 'success');
@@ -1286,6 +1499,12 @@
     // Double-check role is valid — prevent external manipulation
     if (VALID_ROLES.indexOf(currentRole) === -1) currentRole = 'student';
     localStorage.setItem('rtc_role_v2', currentRole);
+    // Resolve the real user by phone (falls back to first user of the role)
+    let u = store.users.find(x => x.phone === _otpPhone);
+    if (!u) u = store.users.find(x => x.role === currentRole);
+    if (!u) u = store.users[0];
+    currentUserId = u ? u.id : null;
+    if (currentUserId != null) localStorage.setItem('rtc_uid_v2', String(currentUserId));
     const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
     navigate(homes[currentRole] || 's-home');
     showToast('تم التحقق بنجاح!', 'success');
@@ -1293,7 +1512,9 @@
 
   window.handleLogout = function () {
     currentRole = null;
+    currentUserId = null;
     localStorage.removeItem('rtc_role_v2');
+    localStorage.removeItem('rtc_uid_v2');
     navStack = [];
     navigate('login');
     showToast('تم تسجيل الخروج', 'info');
@@ -1660,6 +1881,12 @@
     } else if (savedRole) {
       // Tampered role — clear it
       localStorage.removeItem('rtc_role_v2');
+      localStorage.removeItem('rtc_uid_v2');
+    }
+    // Restore the logged-in user id (validated against the store below)
+    const savedUid = parseInt(localStorage.getItem('rtc_uid_v2'), 10);
+    if (!isNaN(savedUid) && store.users.some(x => x.id === savedUid)) {
+      currentUserId = savedUid;
     }
 
     // Auto-advance splash after 2s

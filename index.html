@@ -377,12 +377,12 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     </div>
     <div class="flex flex-col gap-8 flex-1 justify-center px-6">
       <div class="flex justify-center gap-3" dir="ltr">
-        <input class="otp-box" id="o1" maxlength="1" type="tel" oninput="otpFwd(this,'o2')">
-        <input class="otp-box" id="o2" maxlength="1" type="tel" oninput="otpFwd(this,'o3')">
-        <input class="otp-box" id="o3" maxlength="1" type="tel" oninput="otpFwd(this,'o4')">
-        <input class="otp-box" id="o4" maxlength="1" type="tel" oninput="otpFwd(this,'o5')">
-        <input class="otp-box" id="o5" maxlength="1" type="tel" oninput="otpFwd(this,'o6')">
-        <input class="otp-box" id="o6" maxlength="1" type="tel" oninput="otpFwd(this,null)">
+        <input class="otp-box" id="otp1" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,'otp2')">
+        <input class="otp-box" id="otp2" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,'otp3')">
+        <input class="otp-box" id="otp3" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,'otp4')">
+        <input class="otp-box" id="otp4" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,'otp5')">
+        <input class="otp-box" id="otp5" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,'otp6')">
+        <input class="otp-box" id="otp6" maxlength="1" type="tel" inputmode="numeric" oninput="otpFwd(this,null)">
       </div>
       <p class="text-center text-sm text-on-surface-variant">لم يصلك الكود؟ <button class="text-primary font-bold">إعادة الإرسال</button></p>
       <button onclick="verifyOtp()" class="w-full h-14 bg-primary text-white font-bold text-base rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
@@ -571,9 +571,9 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     </div>
     <!-- Summary row -->
     <div class="flex gap-3 px-4 mb-4 flex-shrink-0">
-      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="font-bold text-lg" style="color:#00554e;">8</p><p class="text-xs text-on-surface-variant">حاضر</p></div>
-      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="font-bold text-lg text-error">1</p><p class="text-xs text-on-surface-variant">غائب</p></div>
-      <div class="flex-1 bg-amber-50 rounded-xl p-3 text-center border border-amber-200"><p class="font-bold text-lg text-amber-700">1</p><p class="text-xs text-on-surface-variant">متأخر</p></div>
+      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="font-bold text-lg" style="color:#00554e;" id="sal-pres">0</p><p class="text-xs text-on-surface-variant">حاضر</p></div>
+      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="font-bold text-lg text-error" id="sal-abs">0</p><p class="text-xs text-on-surface-variant">غائب</p></div>
+      <div class="flex-1 bg-amber-50 rounded-xl p-3 text-center border border-amber-200"><p class="font-bold text-lg text-amber-700" id="sal-late">0</p><p class="text-xs text-on-surface-variant">متأخر</p></div>
     </div>
     <div id="sal-list" class="flex flex-col gap-2 px-4 pb-6 overflow-y-auto"></div>
   </div>
@@ -918,7 +918,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     <div class="flex items-center gap-3 p-4 pt-safe flex-shrink-0">
       <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
       <h1 class="text-lg font-bold flex-1 text-on-surface">الإشعارات</h1>
-      <button class="text-xs font-bold text-primary">تحديد الكل كمقروء</button>
+      <button onclick="markAllNotifsRead('student')" class="text-xs font-bold text-primary">تحديد الكل كمقروء</button>
     </div>
     <div id="snotif-list" class="flex flex-col px-4 pb-6 gap-2 overflow-y-auto"></div>
   </div>
@@ -932,7 +932,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <h1 class="text-lg font-bold text-on-surface">استكشاف الكورسات</h1>
     </div>
     <div class="px-4 pb-3 flex-shrink-0">
-      <div class="relative"><span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline">search</span><input type="text" placeholder="ابحث عن كورس..." class="inp pr-10" id="explore-search"></div>
+      <div class="relative"><span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline">search</span><input type="text" placeholder="ابحث عن كورس..." class="inp pr-10" id="explore-search" oninput="renderExplore()"></div>
     </div>
     <div id="explore-list" class="flex flex-col gap-3 px-4 pb-6 overflow-y-auto"></div>
   </div>
@@ -952,9 +952,9 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   </div>
   <div class="scr-body p-4 flex flex-col gap-4">
     <div class="grid grid-cols-3 gap-3 anim-fiu">
-      <div class="bg-white rounded-2xl p-3 text-center shadow-sm"><p class="text-2xl font-bold text-on-surface">40</p><p class="text-xs text-on-surface-variant mt-1">طلابي</p></div>
-      <div class="rounded-2xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="text-2xl font-bold" style="color:#00554e;">22</p><p class="text-xs text-on-surface-variant mt-1">حضروا</p></div>
-      <div class="rounded-2xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="text-2xl font-bold text-error">3</p><p class="text-xs text-on-surface-variant mt-1">غائبون</p></div>
+      <div class="bg-white rounded-2xl p-3 text-center shadow-sm"><p class="text-2xl font-bold text-on-surface" id="vh-total">0</p><p class="text-xs text-on-surface-variant mt-1">طلابي</p></div>
+      <div class="rounded-2xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="text-2xl font-bold" style="color:#00554e;" id="vh-present">0</p><p class="text-xs text-on-surface-variant mt-1">حضروا</p></div>
+      <div class="rounded-2xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="text-2xl font-bold text-error" id="vh-absent">0</p><p class="text-xs text-on-surface-variant mt-1">غائبون</p></div>
     </div>
     <!-- Absence alert -->
     <div class="bg-amber-50 rounded-2xl p-4 border border-amber-200 flex items-start gap-3 anim-fiu" style="animation-delay:0.1s;">
@@ -1249,13 +1249,13 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   <div class="scr-body p-4">
     <div id="acerts-pane" class="flex flex-col gap-3">
       <div id="acerts-list" class="flex flex-col gap-3"></div>
-      <button onclick="showToast('تم إصدار الشهادات للمستوفين تلقائياً ✓')" class="w-full h-12 text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap" style="background:#854d0e;">
+      <button onclick="issueEligibleCerts()" class="w-full h-12 text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap" style="background:#854d0e;">
         <span class="material-symbols-outlined">workspace_premium</span><span>إصدار للمستوفين الشرط</span>
       </button>
     </div>
     <div id="apoints-pane" class="hidden flex-col gap-3">
       <div id="apoints-list" class="flex flex-col gap-2"></div>
-      <button onclick="showToast('تم حفظ قواعد النقاط ✓')" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
+      <button onclick="savePointRules()" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
         <span class="material-symbols-outlined">save</span><span>حفظ القواعد</span>
       </button>
     </div>
@@ -1376,7 +1376,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     <div class="flex items-center gap-3 p-4 pt-safe flex-shrink-0">
       <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
       <h1 class="text-lg font-bold flex-1 text-on-surface">الإشعارات</h1>
-      <button class="text-xs font-bold text-primary">تحديد الكل</button>
+      <button onclick="markAllNotifsRead('admin')" class="text-xs font-bold text-primary">تحديد الكل</button>
     </div>
     <div id="anotif-list" class="flex flex-col px-4 pb-6 gap-2 overflow-y-auto"></div>
   </div>
