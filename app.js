@@ -41,10 +41,10 @@
       { id: 8, name: 'المشرف العام', phone: '01000000001', role: 'admin', branch: 'المقر الرئيسي', avatar: 'مش', status: 'active' },
     ],
     courses: [
-      { id: 1, title: 'اللغة الإنجليزية للمحادثة', cat: 'اللغات', icon: 'translate', color: '#00288e', sessions: 10, enrolled: 22 },
-      { id: 2, title: 'أساسيات برمجة الويب', cat: 'البرمجة', icon: 'code', color: '#003c36', sessions: 12, enrolled: 18 },
-      { id: 3, title: 'مهارات ريادة الأعمال', cat: 'التنمية البشرية', icon: 'psychology', color: '#515f74', sessions: 8, enrolled: 30 },
-      { id: 4, title: 'التصميم الجرافيكي', cat: 'التصميم', icon: 'palette', color: '#854d0e', sessions: 10, enrolled: 15 },
+      { id: 1, title: 'اللغة الإنجليزية للمحادثة', cat: 'اللغات', icon: 'translate', color: '#00288e', sessions: 10, enrolled: 22, startDate: '2026-08-10', scheduleText: 'الأحد والثلاثاء 6م', location: 'قاعة 3، وسط البلد', description: 'كورس مكثف لتنمية مهارات المحادثة باللغة الإنجليزية مع تدريبات عملية.', instructorId: 6, maxStudents: 30 },
+      { id: 2, title: 'أساسيات برمجة الويب', cat: 'البرمجة', icon: 'code', color: '#003c36', sessions: 12, enrolled: 18, startDate: '2026-08-12', scheduleText: 'الأربعاء والجمعة 7م', location: 'قاعة 1، وسط البلد', description: 'مقدمة عملية إلى HTML وCSS وJavaScript لبناء صفحات ويب تفاعلية.', instructorId: 6, maxStudents: 25 },
+      { id: 3, title: 'مهارات ريادة الأعمال', cat: 'التنمية البشرية', icon: 'psychology', color: '#515f74', sessions: 8, enrolled: 30, startDate: '2026-08-08', scheduleText: 'السبت 10ص', location: 'قاعة 5، مدينة نصر', description: 'كيف تبدأ مشروعك الصغير: الفكرة، دراسة السوق، وخطة العمل.', instructorId: 7, maxStudents: 35 },
+      { id: 4, title: 'التصميم الجرافيكي', cat: 'التصميم', icon: 'palette', color: '#854d0e', sessions: 10, enrolled: 15, startDate: '2026-08-15', scheduleText: 'الأحد والثلاثاء 5م', location: 'قاعة 2، وسط البلد', description: 'أساسيات التصميم باستخدام أدوات التصميم الحديثة.', instructorId: 7, maxStudents: 20 },
     ],
     // studentIds المرجعية ترتبط بـ users.id الحقيقيين
     batches: [
@@ -115,25 +115,67 @@
     ],
   };
 
-  // CVE-RTC-004 FIX: Validated store loading — prevents role escalation via DevTools
+  // CVE-RTC-004 FIX: Validated store loading — prevents role escalation & data tampering via DevTools
   const VALID_ROLES = ['student', 'volunteer', 'admin'];
+  const VALID_STATUS = ['present', 'absent', 'late', 'excused'];
+  const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
+  const ICON_RE = /^[a-z_][a-z0-9_]*$/; // Material icon names are [a-z0-9_]
+  function isId(n) { return Number.isInteger(n) && n > 0; }
   function validateStore(raw) {
     if (!raw || typeof raw !== 'object') return false;
     // Must have required arrays
     if (!Array.isArray(raw.users) || !Array.isArray(raw.courses) || !Array.isArray(raw.batches)) return false;
-    // All users must have valid roles
+    // All users must have valid roles + primitive scalar fields
     for (var i = 0; i < raw.users.length; i++) {
       const u = raw.users[i];
-      if (!u.id || !u.name || !u.phone) return false;
+      if (!isId(u.id) || typeof u.name !== 'string' || typeof u.phone !== 'string') return false;
       if (VALID_ROLES.indexOf(u.role) === -1) return false;
+      if (u.avatar && typeof u.avatar !== 'string') return false;
+      if (u.points != null && (typeof u.points !== 'number' || u.points < 0)) return false;
+      if (u.status && u.status !== 'active' && u.status !== 'inactive') return false;
     }
-    // Attendance keys must be numeric
+    // Courses: colors/icons must be safe for style/text context (attribute-breakout XSS guard)
+    for (var c = 0; c < raw.courses.length; c++) {
+      const co = raw.courses[c];
+      if (!isId(co.id) || typeof co.title !== 'string') return false;
+      if (co.color && !HEX_RE.test(co.color)) return false;          // reject `red"; onmouseover=...`
+      if (co.icon && !ICON_RE.test(co.icon)) return false;           // reject `</span><img onerror=...>`
+      if (co.sessions != null && typeof co.sessions !== 'number') return false;
+    }
+    // Batches: studentIds must be numeric (blocks onclick attr-injection via sid)
+    for (var b = 0; b < raw.batches.length; b++) {
+      const bt = raw.batches[b];
+      if (!isId(bt.id)) return false;
+      if (bt.courseId != null && !isId(bt.courseId)) return false;
+      if (bt.studentIds && Array.isArray(bt.studentIds)) {
+        for (var s = 0; s < bt.studentIds.length; s++) if (!isId(bt.studentIds[s])) return false;
+      }
+    }
+    // Attendance keys must be numeric, statuses must be in whitelist
     if (raw.attendance && typeof raw.attendance === 'object') {
       const keys = Object.keys(raw.attendance);
       for (var k = 0; k < keys.length; k++) {
         if (isNaN(Number(keys[k]))) return false;
+        const recs = raw.attendance[keys[k]];
+        if (Array.isArray(recs)) {
+          for (var r = 0; r < recs.length; r++) {
+            if (!recs[r] || VALID_STATUS.indexOf(recs[r].status) === -1) return false;
+          }
+        }
       }
     }
+    // Sanitize semi-trusted collections: notifications/auditLog/pointsRules/exports
+    // (icons/colors used in innerHTML — force-whitelist to avoid stored XSS)
+    ['notifications', 'auditLog', 'pointsRules', 'exports'].forEach(col => {
+      if (!Array.isArray(raw[col])) raw[col] = [];
+      raw[col] = raw[col].filter(function (it) {
+        if (!it || typeof it !== 'object') return false;
+        if (it.icon != null && typeof it.icon !== 'string') return false;
+        if (it.color != null && typeof it.color !== 'string') return false;
+        if (it.pts != null && typeof it.pts !== 'number') return false;
+        return true;
+      });
+    });
     return true;
   }
 
@@ -159,6 +201,17 @@
     store.exports = store.exports || [];
     store.profile = store.profile || {};
     store.branches = store.branches || [];
+    // rich course fields: default old courses so existing data still renders
+    store.courses.forEach(c => {
+      if (c.startDate === undefined) c.startDate = '2026-08-10';
+      if (c.scheduleText === undefined) c.scheduleText = '';
+      if (c.location === undefined) c.location = '';
+      if (c.description === undefined) c.description = '';
+      if (c.instructorId === undefined) c.instructorId = null;
+      if (c.maxStudents === undefined) c.maxStudents = 30;
+      if (c.enrolled === undefined) c.enrolled = 0;
+      if (c.sessions === undefined) c.sessions = 8;
+    });
     // batches: تحويل students (أسماء) → studentIds (أرقام مرجعية)
     store.batches.forEach(b => {
       if (!b.studentIds && b.students) {
@@ -230,34 +283,62 @@
     id = guard(id);
     if (id === currentScreen) return; // guard: no double-push
     navStack = [];
-    if (!_showOnly(id)) return;
-    _showNav(id);
-    _updateNavActive(id);
-    renderScreen(id);
-    _pushState(id);
+    const doNav = () => {
+      if (!_showOnly(id)) return;
+      _showNav(id);
+      _updateNavActive(id);
+      renderScreen(id);
+      _pushState(id);
+    };
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(doNav);
+    } else {
+      doNav();
+    }
   }
 
   function push(id) {
     id = guard(id);
     if (id === currentScreen) return; // guard: no double-push
     navStack.push(currentScreen);
-    if (!_showOnly(id)) return;
-    renderScreen(id);
-    _pushState(id);
+    const doPush = () => {
+      if (!_showOnly(id)) return;
+      renderScreen(id);
+      _pushState(id);
+    };
+    if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.startViewTransition(doPush);
+    } else {
+      doPush();
+    }
   }
 
   function pop() {
-    // Physical back / history-aware: let the browser unwind if we're inside the app
+    // Fall back to the in-memory stack first (most reliable for SPA)
+    if (navStack.length) {
+      const prev = navStack.pop();
+      const doPop = () => {
+        if (!_showOnly(prev)) return;
+        _showNav(prev);
+        _updateNavActive(currentScreen);
+        renderScreen(prev);
+        try { history.back(); } catch (e) {}
+      };
+      if (document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.startViewTransition(doPop);
+      } else {
+        doPop();
+      }
+      return;
+    }
+    // Physical back if no in-memory stack
     if (history.state && history.state.screen) { history.back(); return; }
-    // Fall back to the in-memory stack (e.g. before any pushState succeeded)
-    if (!navStack.length) return;
-    const prev = navStack.pop();
-    if (!_showOnly(prev)) return;
-    _updateNavActive(currentScreen);
   }
 
   function switchTab(id) {
     haptic(5);
+    // Reset navStack but keep a pointer to the tab home so browser-back from
+    // a pushed child lands on the tab home, not on a stale pre-tab screen.
     navStack = [];
     navigate(id); // tabs pushState too, so back unwinds to home
   }
@@ -265,9 +346,28 @@
   window.addEventListener('popstate', function (e) {
     const id = (e.state && e.state.screen) || null;
     if (!id) return; // outside the app's history — let the browser leave
-    navStack.pop(); // keep in-memory stack in sync (top == screen we return to)
+    // Re-run the route guard: after logout the role is cleared, and browser-back
+    // must NOT re-show a protected screen (CVE-RTC-002 hardening).
+    if (!canAccess(id)) {
+      if (currentRole) {
+        const safe = { student: 's-home', volunteer: 'v-home', admin: 'a-home' }[currentRole];
+        _showOnly(safe);
+        _updateNavActive(safe);
+      } else {
+        _showOnly('login');
+        _showNav('login');
+      }
+      // Replace the guarded entry so the user doesn't loop on back
+      try { history.replaceState({ screen: currentScreen }, '', '#/' + currentScreen); } catch (err) {}
+      return;
+    }
+    // Keep the in-memory stack in sync (top == screen we're returning to).
+    // Only pop when the entry we're landing on is still on the stack.
+    if (navStack.length && navStack[navStack.length - 1] === id) navStack.pop();
     if (!_showOnly(id)) return;
     _updateNavActive(currentScreen);
+    _showNav(id);
+    renderScreen(id);
   });
 
   function _showNav(id) {
@@ -294,12 +394,156 @@
     try { if (navigator.vibrate) navigator.vibrate(ms || 10); } catch (e) {}
   }
 
+  function hapticPattern(type) {
+    try {
+      if (!navigator.vibrate) return;
+      if (type === 'success') navigator.vibrate([40, 40, 60, 40, 100]);
+      else if (type === 'warning') navigator.vibrate([50, 50, 50]);
+      else if (type === 'error') navigator.vibrate([100, 30, 100]);
+      else navigator.vibrate(10);
+    } catch (e) {}
+  }
+
+  function triggerCelebration() {
+    hapticPattern('success');
+    const canvas = document.getElementById('confetti-canvas');
+    if (!canvas) return;
+    canvas.style.display = 'block';
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const particles = [];
+    const colors = ['#00288e', '#00554e', '#89f5e7', '#fbbf24', '#e0e7ff', '#f43f5e'];
+    for (let i = 0; i < 75; i++) {
+      particles.push({
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        vx: (Math.random() - 0.5) * 14,
+        vy: (Math.random() - 0.8) * 16,
+        size: Math.random() * 8 + 4,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        rSpeed: (Math.random() - 0.5) * 10,
+        alpha: 1
+      });
+    }
+    const startTime = performance.now();
+    function frame(now) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let active = false;
+      particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.4;
+        p.rotation += p.rSpeed;
+        p.alpha -= 0.015;
+        if (p.alpha > 0) {
+          active = true;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.alpha);
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rotation * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+          ctx.restore();
+        }
+      });
+      if (active && now - startTime < 2500) {
+        requestAnimationFrame(frame);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        canvas.style.display = 'none';
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function formatArabicDate(d) {
+    if (!d) d = new Date();
+    if (typeof d === 'string') d = new Date(d);
+    try {
+      return new Intl.DateTimeFormat('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' }).format(d);
+    } catch (e) {
+      return (d instanceof Date ? d : new Date()).toISOString().slice(0, 10);
+    }
+  }
+
+  // Ripple effect handler
+  document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.ripple, .btn-3d, .btn-primary-3d, .btn-primary');
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const circle = document.createElement('span');
+    const diameter = Math.max(rect.width, rect.height);
+    const radius = diameter / 2;
+    circle.style.width = circle.style.height = `${diameter}px`;
+    circle.style.left = `${e.clientX - rect.left - radius}px`;
+    circle.style.top = `${e.clientY - rect.top - radius}px`;
+    circle.classList.add('ripple-wave');
+    const existing = btn.querySelector('.ripple-wave');
+    if (existing) existing.remove();
+    btn.appendChild(circle);
+    setTimeout(() => circle.remove(), 600);
+  });
+
+  // Attribute-context sanitizers (style= / class=). escapeHtml alone cannot stop
+  // `style="background:x"; onmouseover=...` — these force the value to a safe shape.
+  function safeColor(v, fallback) {
+    if (typeof v === 'string' && HEX_RE.test(v)) return v;
+    return fallback || '#00288e';
+  }
+  function safeIcon(v) {
+    if (typeof v === 'string' && ICON_RE.test(v)) return v;
+    return 'auto_stories';
+  }
+
+  /* ═══════════════════════════════════════════════
+     WHATSAPP DEEP LINKS
+     wa.me builds are URL-encoded (encodeURIComponent) so the message
+     can never break out of the href attribute (CVE-RTC-001 hardening).
+  ═══════════════════════════════════════════════ */
+  window.whatsappLink = function (phone, message) {
+    const digits = String(phone || '').replace(/\D/g, '');
+    return 'https://wa.me/' + digits.replace(/^0/, '20') + '?text=' + encodeURIComponent(message || '');
+  };
+  function whatsappIcon() {
+    return '<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.15h-.01a7.9 7.9 0 0 1-4.03-1.1l-.29-.17-3.12.82.83-3.04-.19-.3a8.23 8.23 0 0 1-1.26-4.38c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c.01 4.54-3.7 8.24-8.24 8.24zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.12-.17.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.02-.38.11-.51.11-.11.25-.29.37-.43.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.41-.42-.56-.43-.14-.01-.31-.01-.48-.01-.17 0-.43.06-.66.31-.22.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.56.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.06-.1-.23-.16-.48-.29z"/></svg>';
+  }
+
+  // Certificate share → WhatsApp (no recipient: opens WhatsApp's share-to-contact picker)
+  window.shareCert = function () {
+    const c = store.certs[0] || {};
+    const msg = 'حصلت على شهادة إتمام كورس ' + (c.course || '') + ' من مسار RTC — جمعية رسالة. رقم التوثيق: ' + (c.no || '');
+    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+  };
+
   function emptyState(icon, title, desc) {
     return '<div class="empty-state">' +
       '<div class="w-16 h-16 rounded-full bg-surface-container flex items-center justify-center">' +
       '<span class="material-symbols-outlined text-3xl text-outline">' + icon + '</span></div>' +
       '<div><p class="text-sm font-bold text-on-surface">' + title + '</p>' +
       '<p class="text-xs text-on-surface-variant mt-1 max-w-[240px]">' + desc + '</p></div></div>';
+  }
+
+  // Reusable loading state: disables a button and swaps its label for a spinner.
+  // setBtnLoading(btn, loading, label): loading=true shows the spinner, false restores.
+  // When called as setBtnLoading(btn, label) it engages loading and returns a reset() fn.
+  function setBtnLoading(btn, loading, label) {
+    if (!btn) return function () {};
+    if (typeof loading === 'string') { label = loading; loading = true; }
+    const origLabel = label || btn.dataset.origLabel || '';
+    btn.dataset.origLabel = origLabel;
+    if (!loading) {
+      btn.disabled = false;
+      btn.classList.remove('opacity-60');
+      if (btn._btnLoadingOrig !== undefined) btn.innerHTML = btn._btnLoadingOrig;
+      return;
+    }
+    if (btn._btnLoadingOrig === undefined) btn._btnLoadingOrig = btn.innerHTML;
+    btn.disabled = true;
+    btn.classList.add('opacity-60');
+    btn.innerHTML = '<span class="material-symbols-outlined anim-spin text-base">progress_activity</span><span>' + escapeHtml(origLabel) + '</span>';
+    return function () { setBtnLoading(btn, false); };
   }
 
   // تحقق ميداني داخل النماذج
@@ -323,8 +567,42 @@
     return u ? u.name : 'طالب';
   }
 
+  // The demo app's "current" user is the first student in the store
+  function currentStudent() {
+    return store.users.find(u => u.role === 'student') || store.users[0];
+  }
+
+  function courseInstructor(c) {
+    if (c && c.instructorId != null) {
+      const u = store.users.find(x => x.id === c.instructorId);
+      if (u) return u.name;
+    }
+    return '';
+  }
+
   function currentBatch() {
     return store.batches.find(b => b.id === store.currentSession.batchId) || store.batches[0];
+  }
+
+  // Current volunteer (the trainer) + the batches they own (instructor name match)
+  function currentVolunteer() {
+    return store.users.find(u => u.role === 'volunteer') || null;
+  }
+  function volunteerBatches() {
+    const v = currentVolunteer();
+    const nm = v ? v.name : '';
+    return store.batches.filter(b => b.instructor === nm);
+  }
+
+  // Attendance rate across all real student records
+  function attendanceRate() {
+    let total = 0, pres = 0;
+    store.users.forEach(u => {
+      if (u.role !== 'student') return;
+      const recs = store.attendance[u.id] || [];
+      recs.forEach(r => { total++; if (r.status === 'present' || r.status === 'late') pres++; });
+    });
+    return total ? Math.round(pres / total * 100) : 0;
   }
 
   function attStats(studentId) {
@@ -338,6 +616,17 @@
     if (p >= 500) return { level: 3, next: null };
     if (p >= 100) return { level: 2, next: 500 };
     return { level: 1, next: 100 };
+  }
+
+  // Longest current streak of present/late sessions at the tail of attendance history
+  function consecutiveStreak(studentId) {
+    const recs = store.attendance[studentId] || [];
+    let streak = 0;
+    for (let i = recs.length - 1; i >= 0; i--) {
+      if (recs[i].status === 'present' || recs[i].status === 'late') streak++;
+      else break;
+    }
+    return streak;
   }
 
   /* ═══════════════════════════════════════════════
@@ -377,14 +666,16 @@
       case 's-certs':         renderStudentCerts();      break;
       case 's-att-log':       renderAttLog();            break;
       case 's-course-detail': renderCourseDetail();      break;
+      case 's-profile':       renderProfile();           break;
       case 's-leaderboard':   renderLeaderboard();       break;
       case 's-notifications': renderStudentNotifs();     break;
       case 's-explore':       renderExplore();           break;
       case 's-onboard':       renderStudentOnboard();    break;
       case 's-excuse':        renderExcuse();            break;
-      case 'v-home':          /* static */               break;
+      case 'v-home':          renderVolHome();           break;
       case 'v-attendance':    renderVolAttendance();     break;
       case 'v-batches':       renderVolBatches();        break;
+      case 'v-profile':       renderVolProfile();        break;
       case 'v-report':        renderVolReport();         break;
       case 'v-edit-past':     renderEditPast();          break;
       case 'a-home':          renderAdminHome();         break;
@@ -407,11 +698,22 @@
     setTxt('sh-student-name', (me.name || 'طالب').split(' ')[0] + ' 👋');
     setTxt('sh-att', st.pct + '%');
     setTxt('sh-pts', (me.points || 0));
-    // Mini courses preview
+    // Level from real points
+    const lv = levelFromPoints(me.points || 0);
+    setTxt('sh-level', lv.level + ' ⭐');
+    // Real streak: consecutive present/late records at the tail of attendance history
+    const streak = consecutiveStreak(me.id);
+    setTxt('sh-streak', '🔥 ' + streak);
+    // Attendance progress bar under the hero
+    const bar = document.getElementById('sh-att-bar');
+    if (bar) bar.style.width = st.pct + '%';
+    // Mini courses preview — only enrolled courses
     const el = document.getElementById('sh-courses');
     if (el) {
-      el.innerHTML = store.courses.slice(0, 2).map(c => `
-        <button onclick="push('s-course-detail')" class="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 tap">
+      const mine = store.courses.filter(c => store.batches.some(b => b.courseId === c.id && b.studentIds.indexOf(me.id) !== -1));
+      const list = mine.length ? mine : store.courses.slice(0, 2);
+      el.innerHTML = list.map(c => `
+        <button onclick="openCourseDetail(${c.id})" class="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 tap">
           <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${c.color}20;">
             <span class="material-symbols-outlined" style="color:${c.color};">${c.icon}</span>
           </div>
@@ -427,12 +729,17 @@
     // Badges preview
     const bg = document.getElementById('sh-badges');
     if (bg) {
-      bg.innerHTML = store.badges.filter(b => b.unlocked).slice(0, 3).map(b => `
-        <div class="flex-1 bg-white rounded-2xl p-3 shadow-sm flex flex-col items-center gap-1.5 text-center">
-          <span class="text-2xl">${escapeHtml(b.icon)}</span>
-          <p class="text-xs font-bold text-on-surface leading-tight">${escapeHtml(b.name)}</p>
-        </div>
-      `).join('');
+      const unlocked = store.badges.filter(b => b.unlocked).slice(0, 3);
+      if (!unlocked.length) {
+        bg.innerHTML = '<div class="flex-1 text-center text-xs text-on-surface-variant py-3">🔒 أكمل المحاضرات لفتح شاراتك الأولى</div>';
+      } else {
+        bg.innerHTML = unlocked.map(b => `
+          <div class="flex-1 bg-white rounded-2xl p-3 shadow-sm flex flex-col items-center gap-1.5 text-center">
+            <span class="text-2xl">${escapeHtml(b.icon)}</span>
+            <p class="text-xs font-bold text-on-surface leading-tight">${escapeHtml(b.name)}</p>
+          </div>
+        `).join('');
+      }
     }
   }
 
@@ -440,13 +747,16 @@
   function renderStudentCourses() {
     const el = document.getElementById('sc-list');
     if (!el) return;
-    if (!store.courses.length) { el.innerHTML = emptyState('book', 'لا توجد كورسات', 'استكشف الكورسات المتاحة وسجّل في ما يناسبك'); return; }
-    const progressPct = [82, 60, 90, 40];
-    el.innerHTML = store.courses.map((c, i) => {
-      const pct = progressPct[i] || 70;
+    const me = currentStudent();
+    // Only courses the current student is actually enrolled in (member of a course batch)
+    const mine = store.courses.filter(c => store.batches.some(b => b.courseId === c.id && b.studentIds.indexOf(me.id) !== -1));
+    if (!mine.length) { el.innerHTML = emptyState('book', 'لا توجد كورسات مسجلة', 'استكشف الكورسات المتاحة وسجّل في ما يناسبك'); return; }
+    el.innerHTML = mine.map(c => {
+      const pct = attStats(me.id).pct;
       const eligible = pct >= 75;
+      const batch = store.batches.find(b => b.courseId === c.id);
       return `
-        <button onclick="push('s-course-detail')" class="w-full bg-white rounded-2xl overflow-hidden shadow-sm tap">
+        <button onclick="openCourseDetail(${c.id})" class="w-full bg-white rounded-2xl overflow-hidden shadow-sm tap">
           <div class="h-1.5" style="background:${c.color};"></div>
           <div class="p-4">
             <div class="flex items-start gap-3">
@@ -469,7 +779,7 @@
                 <span class="material-symbols-outlined text-sm" style="color:${eligible ? '#00554e' : '#ba1a1a'};">${eligible ? 'verified' : 'cancel'}</span>
                 <span class="text-xs font-semibold" style="color:${eligible ? '#00554e' : '#ba1a1a'};">${eligible ? 'مؤهل للشهادة' : 'يحتاج مزيد من الحضور'}</span>
               </div>
-              <span class="text-xs text-on-surface-variant">${c.enrolled} طالب</span>
+              <span class="text-xs text-on-surface-variant">${batch ? batch.studentIds.length : 0} طالب</span>
             </div>
           </div>
         </button>
@@ -482,7 +792,14 @@
     const el = document.getElementById('sal-list');
     if (!el) return;
     const me = store.users.find(u => u.role === 'student') || store.users[0];
-    const sessions = (store.attendance[me.id] || []).filter(s => attFilter === 'all' || s.status === attFilter);
+    // Summary row counts from real records (unfiltered)
+    const all = store.attendance[me.id] || [];
+    const cnt = st => all.filter(r => r.status === st).length;
+    const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    setTxt('sal-present', cnt('present'));
+    setTxt('sal-absent', cnt('absent'));
+    setTxt('sal-late', cnt('late'));
+    const sessions = all.filter(s => attFilter === 'all' || s.status === attFilter);
     if (!sessions.length) {
       el.innerHTML = emptyState('fact_check', attFilter === 'all' ? 'لا توجد محاضرات مسجلة' : 'لا توجد نتائج بهذا الفلتر', 'سجل الحضور يظهر بعد كل محاضرة');
       return;
@@ -515,17 +832,60 @@
   };
 
   // ── COURSE DETAIL (data-driven)
+  // Global so inline onclick="enrollCourse(_viewCourseId)" can read it
+  window._viewCourseId = null;
+  window.openCourseDetail = function (courseId) {
+    window._viewCourseId = courseId;
+    push('s-course-detail');
+  };
+
   function renderCourseDetail() {
-    const c = store.courses[0];
+    // Selected course (or first as fallback)
+    const c = store.courses.find(x => x.id === _viewCourseId) || store.courses[0];
     if (!c) return;
-    const me = store.users.find(u => u.role === 'student') || store.users[0];
-    const st = attStats(me.id);
+    const me = currentStudent();
+    const batch = store.batches.find(b => b.courseId === c.id);
+    const enrolled = batch ? batch.studentIds.length : (c.enrolled || 0);
+    const max = c.maxStudents || enrolled || 1;
+    const isEnrolled = !!batch && batch.studentIds.indexOf(me.id) !== -1;
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const inst = courseInstructor(c);
+    const att = attStats(me.id);
+    const attRecs = store.attendance[me.id] || [];
+    const cnt = st => attRecs.filter(r => r.status === st).length;
     set('cd-title', c.title);
     set('cd-cat', c.cat);
-    set('cd-pct', st.pct + '%');
+    set('cd-pct', att.pct + '%');
+    set('cd-sessions-count', cnt('present') + cnt('late'));
+    set('cd-sessions-total', c.sessions);
+    set('cd-present', '✓ ' + cnt('present') + ' حاضر');
+    set('cd-absent', '✗ ' + cnt('absent') + ' غائب');
+    set('cd-late', '⏰ ' + cnt('late') + ' متأخر');
+    set('cd-start', c.startDate || '—');
+    set('cd-schedule', c.scheduleText || '—');
+    set('cd-location', c.location || '—');
+    set('cd-instructor', inst || '—');
+    set('cd-description', c.description || '');
+    set('cd-count', enrolled + ' / ' + max);
     const ring = document.getElementById('cd-ring');
-    if (ring) ring.setAttribute('stroke-dasharray', st.pct + ',100');
+    if (ring) ring.setAttribute('stroke-dasharray', att.pct + ',100');
+    // Enroll button: enrolled state → gone (opens my courses); free seats → enroll
+    const btn = document.getElementById('cd-enroll-btn');
+    if (btn) {
+      if (isEnrolled) {
+        btn.innerHTML = 'مسجّل بالفعل ✓';
+        btn.disabled = true;
+        btn.className = 'w-full h-12 rounded-2xl font-bold text-sm tap opacity-60 border border-outline-variant/40 bg-surface-container text-on-surface';
+      } else if (enrolled >= max) {
+        btn.innerHTML = 'العدد مكتمل';
+        btn.disabled = true;
+        btn.className = 'w-full h-12 rounded-2xl font-bold text-sm tap opacity-60 border border-error/30 bg-error/5 text-error';
+      } else {
+        btn.innerHTML = '<span class="material-symbols-outlined text-lg">how_to_reg</span><span>سجّل في الكورس</span>';
+        btn.disabled = false;
+        btn.className = 'w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap';
+      }
+    }
   }
 
   // ── BADGE DETAIL MODAL
@@ -584,54 +944,151 @@
     `).join('');
   }
 
-  // ── LEADERBOARD
+  // ── LEADERBOARD (real store.users points, sorted desc)
   function renderLeaderboard() {
     const el = document.getElementById('sl-list');
     if (!el) return;
-    const top4plus = store.leaderboard.slice(3);
-    el.innerHTML = top4plus.map(p => `
-      <div class="flex items-center gap-3 p-3 rounded-2xl ${p.me ? 'bg-primary/8 border border-primary/20' : 'bg-white shadow-sm'}">
-        <div class="w-8 h-8 rounded-full ${p.me ? 'bg-primary text-white' : 'bg-surface-container text-on-surface'} flex items-center justify-center font-bold text-sm">#${p.rank}</div>
-        <div class="w-10 h-10 rounded-full ${p.me ? 'bg-primary/20' : 'bg-secondary-container'} flex items-center justify-center font-bold text-sm text-on-surface">${escapeHtml(p.avatar)}</div>
+    const me = currentStudent();
+    // All students ranked by real points (ties broken by id for stable order)
+    const ranked = store.users
+      .filter(u => u.role === 'student')
+      .sort((a, b) => (b.points || 0) - (a.points || 0) || a.id - b.id)
+      .map((u, i) => ({ u, rank: i + 1, me: u.id === me.id }));
+    if (!ranked.length) { el.innerHTML = emptyState('leaderboard', 'لا يوجد طلاب', 'لا توجد بيانات للترتيب بعد'); return; }
+    const podium = ranked.slice(0, 3);
+    // Podium: [1st on top (center/right in RTL), 2nd, 3rd]
+    const medal = { 1: '🥇', 2: '🥈', 3: '🥉' };
+    const heights = { 1: 'h-24', 2: 'h-14', 3: 'h-10' };
+    const podiumEl = document.getElementById('sl-podium');
+    if (podiumEl) {
+      const ordered = [podium[1], podium[0], podium[2]].filter(Boolean); // 2,1,3
+      podiumEl.innerHTML = ordered.map(p => {
+        const r = p.rank;
+        const avatarCls = r === 1 ? 'w-16 h-16 text-2xl border-2 border-amber-300 shadow-lg' : 'w-14 h-14 text-xl border-2 border-white/30';
+        const avatarBg = r === 1 ? 'rgba(251,191,36,0.5)' : 'rgba(255,255,255,0.25)';
+        return `
+          <div class="flex flex-col items-center gap-2 flex-1">
+            <div class="${avatarCls} rounded-full bg-white/25 flex items-center justify-center font-bold text-white" style="background:${avatarBg};">${escapeHtml(p.u.avatar)}</div>
+            <p class="text-white text-xs font-bold text-center">${escapeHtml(p.u.name)}</p>
+            <p class="text-white/65 text-xs">${p.u.points} ⭐</p>
+            <div class="w-full ${heights[r]} bg-white/20 rounded-xl flex items-center justify-center text-2xl">${medal[r]}</div>
+          </div>
+        `;
+      }).join('');
+    }
+    // List below podium (4th onward) + the me-highlighted card if I'm in top 3
+    const below = ranked.slice(3);
+    const topMe = ranked.slice(0, 3).filter(p => p.me);
+    el.innerHTML = below.concat(topMe).map(p => `
+      <div class="flex items-center gap-3 p-3 rounded-2xl ${p.me ? 'border border-primary/20' : 'bg-white shadow-sm'}" style="${p.me ? 'background:rgba(0,40,142,0.06);' : ''}">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm" style="${p.me ? 'background:#00288e;color:#fff;' : 'background:#eceef0;color:#191c1e;'}">#${p.rank}</div>
+        <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm" style="${p.me ? 'background:rgba(0,40,142,0.15);color:#191c1e;' : 'background:#d5e3fc;color:#191c1e;'}">${escapeHtml(p.u.avatar)}</div>
         <div class="flex-1">
-          <p class="text-sm font-bold ${p.me ? 'text-primary' : 'text-on-surface'}">${escapeHtml(p.name)}${p.me ? ' (أنت)' : ''}</p>
-          <p class="text-xs text-on-surface-variant">${p.pts} نقطة</p>
+          <p class="text-sm font-bold" style="color:${p.me ? '#00288e' : '#191c1e'}">${escapeHtml(p.u.name)}${p.me ? ' (أنت)' : ''}</p>
+          <p class="text-xs text-on-surface-variant">${p.u.points} نقطة</p>
         </div>
         <span class="text-base">⭐</span>
       </div>
     `).join('');
+    // My rank sticky footer
+    const myRow = ranked.find(p => p.me);
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    if (myRow) {
+      setTxt('sl-my-rank', '#' + myRow.rank);
+      setTxt('sl-my-name', myRow.u.name + ' (أنت)');
+      setTxt('sl-my-pts', myRow.u.points + ' نقطة');
+      const delta = myRow.rank - 1; // how many are above me
+      const deltaEl = document.getElementById('sl-my-delta');
+      if (deltaEl) {
+        deltaEl.textContent = delta > 0 ? ('تفوق على ' + delta + (delta === 1 ? ' طالب' : ' طلاب')) : 'أنت الأول 🏆';
+      }
+    }
   }
 
   // ── STUDENT CERTS
   function renderStudentCerts() {
     const el = document.getElementById('scerts-list');
     if (!el) return;
-    const myCerts = store.certs.filter(c => c.student.includes('أحمد'));
+    const me = currentStudent();
+    // Issued certs: match store.certs by course title against the student's courses
+    const myCourses = store.courses.filter(c => store.batches.some(b => b.courseId === c.id && b.studentIds.indexOf(me.id) !== -1));
+    const myCerts = store.certs.filter(c => myCourses.some(co => co.title === c.course));
     if (myCerts.length === 0) {
       el.innerHTML = emptyState('workspace_premium', 'لا توجد شهادات بعد', 'أكمل حضور الكورسات بنسبة 75% أو أكثر لإصدار شهادتك تلقائياً');
-      return;
-    }
-    el.innerHTML = myCerts.map(c => `
-      <button onclick="push('s-cert-detail')" class="w-full tap">
-        <div class="bg-white rounded-2xl overflow-hidden shadow-sm cert-gold-border">
-          <div class="h-1.5" style="background:linear-gradient(90deg,#00288e,#1e40af,#003c36);"></div>
-          <div class="p-4 flex items-center gap-4">
-            <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:rgba(212,175,55,0.15);border:1.5px solid rgba(212,175,55,0.4);">
-              <span class="material-symbols-outlined text-amber-600 text-2xl" style="font-variation-settings:'FILL' 1;">workspace_premium</span>
-            </div>
-            <div class="flex-1 text-right">
-              <p class="font-bold text-on-surface text-sm">${escapeHtml(c.course)}</p>
-              <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.date)}</p>
-              <div class="flex items-center gap-2 mt-1.5">
-                <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:rgba(0,85,78,0.1);color:#00554e;">صادرة ✓</span>
-                <span class="text-xs text-on-surface-variant">${c.att}% حضور</span>
+    } else {
+      el.innerHTML = myCerts.map(c => `
+        <button onclick="push('s-cert-detail')" class="w-full tap">
+          <div class="bg-white rounded-2xl overflow-hidden shadow-sm cert-gold-border">
+            <div class="h-1.5" style="background:linear-gradient(90deg,#00288e,#1e40af,#003c36);"></div>
+            <div class="p-4 flex items-center gap-4">
+              <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:rgba(212,175,55,0.15);border:1.5px solid rgba(212,175,55,0.4);">
+                <span class="material-symbols-outlined text-amber-600 text-2xl" style="font-variation-settings:'FILL' 1;">workspace_premium</span>
               </div>
+              <div class="flex-1 text-right">
+                <p class="font-bold text-on-surface text-sm">${escapeHtml(c.course)}</p>
+                <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.date)}</p>
+                <div class="flex items-center gap-2 mt-1.5">
+                  <span class="text-xs font-bold px-2 py-0.5 rounded-full" style="background:rgba(0,85,78,0.1);color:#00554e;">صادرة ✓</span>
+                  <span class="text-xs text-on-surface-variant">${c.att}% حضور</span>
+                </div>
+              </div>
+              <span class="material-symbols-outlined text-outline">chevron_left</span>
             </div>
-            <span class="material-symbols-outlined text-outline">chevron_left</span>
+          </div>
+        </button>
+      `).join('');
+    }
+    // Pending card: enrolled courses still below the 75% cert threshold
+    const pendingEl = document.getElementById('scerts-pending');
+    if (!pendingEl) return;
+    const st = attStats(me.id);
+    const pend = myCourses.filter(c => {
+      const batch = store.batches.find(b => b.courseId === c.id && b.studentIds.indexOf(me.id) !== -1);
+      const done = Math.min((store.attendance[me.id] || []).length, batch ? batch.lecturesDone : c.sessions);
+      return done < c.sessions || st.pct < 75;
+    }).filter(c => !myCerts.some(x => x.course === c.title));
+    if (!pend.length) { pendingEl.innerHTML = ''; return; }
+    pendingEl.innerHTML = pend.map(c => {
+      const pct = st.pct;
+      const batch = store.batches.find(b => b.courseId === c.id);
+      const done = Math.min((store.attendance[me.id] || []).length, batch ? batch.lecturesDone : c.sessions);
+      const needTotal = Math.ceil(0.75 * c.sessions);
+      const needMore = Math.max(0, needTotal - done);
+      return `
+        <div class="bg-amber-50 rounded-2xl p-4 border border-amber-200">
+          <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined text-amber-600">info</span>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-on-surface">${escapeHtml(c.title)}</p>
+              <p class="text-xs text-on-surface-variant mt-0.5">حضور: ${pct}% — المطلوب: 75% لإصدار الشهادة</p>
+              <div class="h-1.5 bg-amber-200 rounded-full mt-2"><div class="h-full bg-amber-500 rounded-full" style="width:${Math.min(100, pct)}%;"></div></div>
+              <p class="text-xs text-amber-700 font-semibold mt-1.5">${needMore > 0 ? 'تحتاج ' + needMore + ' محاضرات إضافية' : 'أكمل المحاضرات المتبقية للوصول للحد الأدنى'}</p>
+            </div>
           </div>
         </div>
-      </button>
-    `).join('');
+      `;
+    }).join('');
+  }
+
+  // ── STUDENT PROFILE
+  function renderProfile() {
+    const me = currentStudent();
+    if (!me) return;
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    // Enrolled course count = distinct courses in batches I belong to
+    const enrolledCourses = store.courses.filter(c => store.batches.some(b => b.courseId === c.id && b.studentIds.indexOf(me.id) !== -1));
+    setTxt('sp-courses', enrolledCourses.length);
+    setTxt('sp-points', me.points || 0);
+    const unlocked = store.badges.filter(b => b.unlocked).length;
+    setTxt('sp-badges-count', unlocked);
+    // Header name/branch/avatar (profile header ids added in index.html)
+    setTxt('pf-name', me.name || 'طالب');
+    setTxt('pf-branch', (me.branch || '') + (store.profile.branch ? ' — ' + store.profile.branch : ''));
+    setTxt('pf-branch-detail', (me.branch || '') + ' — القاهرة');
+    const avatar = document.getElementById('pf-avatar');
+    if (avatar) avatar.textContent = me.avatar || (me.name || 'ط')[0];
+    const phone = document.getElementById('pf-phone');
+    if (phone) phone.textContent = me.phone || '';
   }
 
   // ── STUDENT NOTIFICATIONS
@@ -658,18 +1115,27 @@
   function renderExplore() {
     const el = document.getElementById('explore-list');
     if (!el) return;
-    el.innerHTML = store.courses.map(c => `
+    const me = currentStudent();
+    el.innerHTML = store.courses.map(c => {
+      const batch = store.batches.find(b => b.courseId === c.id);
+      const enrolled = batch ? batch.studentIds.length : (c.enrolled || 0);
+      const max = c.maxStudents || enrolled || 1;
+      const inst = courseInstructor(c);
+      return `
       <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
         <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${c.color}18;">
           <span class="material-symbols-outlined" style="color:${c.color};">${c.icon}</span>
         </div>
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <p class="font-bold text-on-surface text-sm">${escapeHtml(c.title)}</p>
-          <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.enrolled} مشترك</p>
+          <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.sessions} محاضرات · يبدأ ${escapeHtml(c.startDate || '—')}</p>
+          <p class="text-xs text-on-surface-variant mt-0.5 truncate">${escapeHtml(inst ? inst + ' · ' : '')}${escapeHtml(c.location || '')}</p>
+          <p class="text-xs font-semibold mt-0.5" style="color:${c.color};">${enrolled} / ${max} مشترك</p>
         </div>
-        <button onclick="showToast('تم التسجيل في الكورس!','success')" class="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-full tap">تسجيل</button>
+        <button onclick="openCourseDetail(${c.id})" class="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded-full tap flex-shrink-0">التفاصيل</button>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
 
   // ── STUDENT ONBOARDING
@@ -755,6 +1221,64 @@
     setTimeout(() => pop(), 900);
   };
 
+  // ── VOLUNTEER HOME (real stats + dynamic absence alert)
+  function renderVolHome() {
+    const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    // طلابي/حضروا/غائبون from this volunteer's batches (currentSession recs)
+    const myBatches = volunteerBatches();
+    const students = {};
+    myBatches.forEach(b => b.studentIds.forEach(sid => { students[sid] = true; }));
+    const ids = Object.keys(students).map(Number);
+    let pres = 0, abs = 0;
+    const recs = store.currentSession.recs || {};
+    ids.forEach(sid => {
+      if (recs[sid] === 'present' || recs[sid] === 'late') pres++;
+      else if (recs[sid] === 'absent') abs++;
+    });
+    setTxt('vh-mine', ids.length);
+    setTxt('vh-present', pres);
+    setTxt('vh-absent', abs);
+    // Absence alert (most-absent student across recorded sessions)
+    const el = document.getElementById('vh-absence');
+    if (!el) return;
+    let worst = null, worstAbs = 0;
+    store.users.forEach(u => {
+      if (u.role !== 'student') return;
+      const a = store.attendance[u.id] || [];
+      const c = a.filter(r => r.status === 'absent').length;
+      if (c > worstAbs) { worstAbs = c; worst = u; }
+    });
+    if (!worst || worstAbs === 0) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const nameEl = document.getElementById('vh-absence-name');
+    if (nameEl) nameEl.textContent = worst.name + ' — غاب ' + worstAbs + ' مرات · دفعة A إنجليزي';
+    const btn = document.getElementById('vh-absence-link');
+    if (btn) btn.href = whatsappLink(worst.phone, 'مرحباً ' + worst.name + '، لاحظنا غيابك عن ' + worstAbs + ' محاضرات في دفعة A — نتمنى معرفة سبب الغياب ودعمك للمتابعة. فريق مسار RTC');
+  }
+
+  // ── VOLUNTEER PROFILE (dynamic — mirrors data from store)
+  function renderVolProfile() {
+    const v = currentVolunteer();
+    if (!v) return;
+    const batches = volunteerBatches();
+    const totalStudents = batches.reduce((sum, b) => sum + b.studentIds.length, 0);
+    const totalLectures = batches.reduce((sum, b) => sum + (b.lecturesDone || 0), 0);
+    // Name / branch
+    const nameEl = document.getElementById('vp-name');
+    if (nameEl) nameEl.textContent = v.name;
+    const branchEl = document.getElementById('vp-branch');
+    if (branchEl) branchEl.textContent = v.branch || 'فرع وسط البلد';
+    const avatarEl = document.getElementById('vp-avatar');
+    if (avatarEl) avatarEl.textContent = v.avatar || v.name[0];
+    // Stats
+    const batchEl = document.getElementById('vp-batches');
+    if (batchEl) batchEl.textContent = batches.length;
+    const stuEl = document.getElementById('vp-students');
+    if (stuEl) stuEl.textContent = totalStudents;
+    const lctEl = document.getElementById('vp-lectures');
+    if (lctEl) lctEl.textContent = totalLectures;
+  }
+
   /* ── VOLUNTEER ATTENDANCE */
   function renderVolAttendance() {
     const el = document.getElementById('va-students');
@@ -763,14 +1287,18 @@
     const recs = store.currentSession.recs || {};
     if (!batch.studentIds.length) { el.innerHTML = emptyState('groups', 'لا يوجد طلاب في هذه الدفعة', 'أضف طلاباً من إدارة المستخدمين'); return; }
     el.innerHTML = batch.studentIds.map(sid => {
-      const u = store.users.find(x => x.id === sid) || { name: userName(sid), avatar: '؟' };
+      const u = store.users.find(x => x.id === sid) || { name: userName(sid), avatar: '؟', phone: '' };
       const st = recs[sid] || null;
+      const waHref = whatsappLink(u.phone, 'مرحباً ' + u.name + '، هذه رسالة من مدربك بخصوص دفعتك وحضورك في مسار RTC.');
       return `
         <div class="flex items-center gap-3 p-4" data-student="${sid}">
           <div class="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center font-bold text-on-surface text-sm flex-shrink-0">${escapeHtml(u.avatar)}</div>
           <div class="flex-1 min-w-0">
             <p class="font-bold text-on-surface text-sm truncate">${escapeHtml(u.name)}</p>
           </div>
+          <a href="${waHref}" target="_blank" rel="noopener" class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 tap" style="background:rgba(0,136,63,0.1);" aria-label="تواصل واتساب">
+            ${whatsappIcon()}
+          </a>
           <div class="flex gap-1.5 flex-shrink-0">
             <button class="att-btn ${st === 'present' ? 'active-present' : ''}" onclick="setAtt(this,${sid},'present')">حاضر</button>
             <button class="att-btn ${st === 'absent' ? 'active-absent' : ''}" onclick="setAtt(this,${sid},'absent')">غائب</button>
@@ -790,10 +1318,53 @@
   }
 
   /* ── VOLUNTEER BATCHES */
+  // Open the "إنشاء دفعة" modal (courses + student checkboxes populated on open)
+  window.openAddBatchModal = function () {
+    const sel = document.getElementById('nb-b-course');
+    if (sel) {
+      sel.innerHTML = '<option value="">اختر الكورس...</option>' + store.courses.map(c =>
+        '<option value="' + c.id + '">' + escapeHtml(c.title) + '</option>').join('');
+    }
+    const st = document.getElementById('nb-b-students');
+    if (st) {
+      st.innerHTML = store.users.filter(u => u.role === 'student').map(u => `
+        <label class="flex items-center gap-3 bg-surface-container-low rounded-xl px-3 py-2.5">
+          <input type="checkbox" value="${u.id}" class="accent-primary w-4 h-4">
+          <span class="text-sm font-medium text-on-surface">${escapeHtml(u.name)}</span>
+        </label>`).join('');
+    }
+    openModal('add-batch-modal');
+  };
+
+  window.submitAddBatch = function (e) {
+    e.preventDefault();
+    const courseId = +(document.getElementById('nb-b-course').value);
+    const name = (document.getElementById('nb-b-name').value || '').trim();
+    const schedule = (document.getElementById('nb-b-schedule').value || '').trim();
+    const location = (document.getElementById('nb-b-location').value || '').trim();
+    if (!courseId) { showToast('اختر الكورس', 'error'); return; }
+    if (!name) { showToast('اكتب اسم الدفعة', 'error'); return; }
+    const boxes = document.querySelectorAll('#nb-b-students input:checked');
+    if (!boxes.length) { showToast('اختر طالباً واحداً على الأقل', 'error'); return; }
+    const studentIds = Array.prototype.map.call(boxes, b => +b.value);
+    const course = store.courses.find(c => c.id === courseId);
+    const v = currentVolunteer();
+    store.batches.push({
+      id: Date.now(), name, courseId, instructor: v ? v.name : '', schedule, location,
+      studentIds, lecturesDone: 0
+    });
+    store.auditLog.unshift({ icon: 'add_circle', text: 'إنشاء دفعة جديدة: ' + name + (course ? ' (' + course.title + ')' : ''), time: 'الآن', color: '#00288e' });
+    save();
+    closeModal('add-batch-modal');
+    renderVolBatches();
+    showToast('تم إنشاء الدفعة "' + name + '"', 'success');
+    e.target.reset();
+  };
+
   function renderVolBatches() {
     const el = document.getElementById('vb-list');
     if (!el) return;
-    if (!store.batches.length) { el.innerHTML = emptyState('groups', 'لا توجد دفعات', 'ستظهر دفعاتك النشطة هنا'); return; }
+    if (!store.batches.length) { el.innerHTML = emptyState('groups', 'لا توجد دفعات', 'اضغط "إنشاء دفعة" لبدء أول دفعة'); return; }
     el.innerHTML = store.batches.map(b => {
       const course = store.courses.find(c => c.id === b.courseId) || {};
       const names = b.studentIds.map(sid => { const u = store.users.find(x => x.id === sid); return u ? u.name : 'طالب'; });
@@ -828,6 +1399,14 @@
   let vRating = 0;
   function renderVolReport() {
     vRating = 0;
+    const batch = currentBatch();
+    const el = document.getElementById('vrep-header');
+    if (el) {
+      const name = document.getElementById('vrep-batch-name');
+      if (name) name.textContent = batch.name;
+      const meta = document.getElementById('vrep-meta');
+      if (meta) meta.textContent = 'المحاضرة ' + (batch.lecturesDone + 1) + ' · ' + new Date().toDateString();
+    }
     document.querySelectorAll('#vrep-rate button').forEach(b => { b.classList.add('grayscale'); b.classList.add('opacity-40'); });
   }
   window.setRating = function (btn, n) {
@@ -845,7 +1424,8 @@
     if (!notes) { showToast('اكتب ملخص ما تم شرحه', 'error'); return; }
     if (!vRating) { showToast('اختر تقييم أداء الدفعة', 'error'); return; }
     if (quiz && (quiz < 0 || quiz > 100)) { showToast('الدرجة يجب أن تكون بين 0 و 100', 'error'); return; }
-    store.auditLog.unshift({ icon: 'summarize', text: 'تقرير محاضرة — دفعة A (تقييم ' + vRating + '/5)', time: 'الآن', color: '#00288e' });
+    const batch = currentBatch();
+    store.auditLog.unshift({ icon: 'summarize', text: 'تقرير محاضرة — ' + batch.name + ' محاضرة ' + (batch.lecturesDone + 1) + ' (تقييم ' + vRating + '/5)', time: 'الآن', color: '#00288e' });
     save();
     showToast('تم حفظ تقرير المحاضرة', 'success');
     setTimeout(() => pop(), 900);
@@ -904,21 +1484,39 @@
 
   /* ── ADMIN HOME */
   function renderAdminHome() {
-    const setKpi = (id, val) => { const el = document.getElementById(id); if (el) animCount(el, val); };
+    const setKpi = (id, val, suffix) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (suffix) {
+        // For percentage values, animate number then append suffix
+        animCount(el, val, 850, suffix);
+      } else {
+        animCount(el, val);
+      }
+    };
     setKpi('kpi-s', store.users.filter(u => u.role === 'student').length);
     setKpi('kpi-c', store.courses.length);
     setKpi('kpi-b', store.batches.length);
     setKpi('kpi-cert', store.certs.length);
+    setKpi('kpi-att', attendanceRate(), '%');
   }
 
-  function animCount(el, target) {
-    let cur = 0;
-    const step = Math.ceil(target / 20);
-    const timer = setInterval(() => {
-      cur = Math.min(cur + step, target);
-      el.textContent = cur;
-      if (cur >= target) clearInterval(timer);
-    }, 40);
+  function animCount(el, target, duration, suffix) {
+    if (!el) return;
+    duration = duration || 850;
+    suffix = suffix || '';
+    const start = performance.now();
+    const initialVal = 0;
+    function tick(now) {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      el.textContent = Math.round(initialVal + (target - initialVal) * eased) + suffix;
+      if (progress < 1) {
+        requestAnimationFrame(tick);
+      }
+    }
+    requestAnimationFrame(tick);
   }
 
   /* ── ADMIN USERS */
@@ -932,7 +1530,8 @@
       const matchSearch = !search || u.name.includes(search) || u.phone.includes(search);
       return matchRole && matchSearch;
     });
-    const roleLabels = { student: '🎓 طالب', volunteer: '🤝 متطوع', admin: '⚙️ مشرف' };
+    const roleIcon = { student: 'school', volunteer: 'handshake', admin: 'settings' };
+    const roleLabels = { student: 'طالب', volunteer: 'متطوع', admin: 'مشرف' };
     const roleColors = { student: '#00288e', volunteer: '#003c36', admin: '#515f74' };
     if (filtered.length === 0) {
       el.innerHTML = emptyState('person_search', 'لا توجد نتائج', 'جرّب تعديل البحث أو الفلتر، أو أضف مستخدماً جديداً');
@@ -943,15 +1542,19 @@
     el.innerHTML = filtered.map(u => {
       const maskedPhone = escapeHtml(u.phone.slice(0, 5) + '****' + u.phone.slice(-2));
       const safeId = Number(u.id);
+      const waHref = whatsappLink(u.phone, 'مرحباً ' + u.name + '، رسالة من إدارة مسار RTC.');
       return `
       <div class="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3">
         <div class="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm flex-shrink-0" style="background:${escapeHtml(roleColors[u.role])};">${escapeHtml(u.avatar)}</div>
         <div class="flex-1 min-w-0">
           <p class="font-bold text-on-surface text-sm truncate">${escapeHtml(u.name)}</p>
           <p class="text-xs text-on-surface-variant mt-0.5" dir="ltr">${maskedPhone} &middot; ${escapeHtml(u.branch)}</p>
-          <span class="text-xs font-semibold mt-1 inline-block" style="color:${escapeHtml(roleColors[u.role])}">${escapeHtml(roleLabels[u.role])}</span>
+          <span class="text-xs font-semibold mt-1 inline-flex items-center gap-1" style="color:${escapeHtml(roleColors[u.role])}"><span class="material-symbols-outlined text-[13px]" aria-hidden="true">${roleIcon[u.role] || 'person'}</span>${escapeHtml(roleLabels[u.role])}</span>
         </div>
         <div class="flex items-center gap-1 flex-shrink-0">
+          <a href="${waHref}" target="_blank" rel="noopener" class="w-8 h-8 rounded-full flex items-center justify-center tap" style="background:rgba(0,136,63,0.1);" aria-label="تواصل واتساب">
+            ${whatsappIcon()}
+          </a>
           <button onclick="editUser(${safeId})" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tap" aria-label="تعديل">
             <span class="material-symbols-outlined text-on-surface-variant text-sm">edit</span>
           </button>
@@ -970,7 +1573,10 @@
     if (!el) return;
     if (!store.courses.length) { el.innerHTML = emptyState('school', 'لا توجد كورسات بعد', 'أنشئ أول كورس لبدء التسجيل'); return; }
     el.innerHTML = store.courses.map(c => {
-      const batch = store.batches.find(b => b.courseId === c.id);
+      const cbs = store.batches.filter(b => b.courseId === c.id);
+      const enrolled = cbs.reduce((n, b) => n + b.studentIds.length, 0) || (c.enrolled || 0);
+      const max = c.maxStudents || enrolled || 1;
+      const inst = courseInstructor(c);
       return `
         <div class="bg-white rounded-2xl overflow-hidden shadow-sm">
           <div class="h-1.5" style="background:${c.color};"></div>
@@ -980,7 +1586,8 @@
                 <div class="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${c.color}18;">
                   <span class="material-symbols-outlined" style="color:${c.color};">${c.icon}</span>
                 </div>
-                <div><p class="font-bold text-on-surface text-sm">${escapeHtml(c.title)}</p><p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.sessions} محاضرات</p></div>
+                <div><p class="font-bold text-on-surface text-sm">${escapeHtml(c.title)}</p><p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(c.cat)} · ${c.sessions} محاضرات</p>
+                <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(inst ? inst + ' · ' : '')}${escapeHtml(c.location || '')}</p></div>
               </div>
               <div class="flex items-center gap-1">
                 <button onclick="editCourse(${c.id})" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined text-sm text-on-surface-variant">edit</span></button>
@@ -988,17 +1595,83 @@
               </div>
             </div>
             <div class="flex gap-3 border-t border-outline-variant/30 pt-3">
-              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${c.enrolled}</p><p class="text-xs text-on-surface-variant">مشترك</p></div>
+              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${enrolled}<span class="text-xs font-semibold text-on-surface-variant">/${max}</span></p><p class="text-xs text-on-surface-variant">مسجل / سعة</p></div>
               <div class="w-px bg-outline-variant/40"></div>
-              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${batch ? 1 : 0}</p><p class="text-xs text-on-surface-variant">دفعة</p></div>
+              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${escapeHtml((c.startDate || '').slice(0, 10))}</p><p class="text-xs text-on-surface-variant">بداية</p></div>
               <div class="w-px bg-outline-variant/40"></div>
-              <div class="flex-1 text-center"><p class="text-lg font-bold" style="color:#00554e;">82%</p><p class="text-xs text-on-surface-variant">متوسط حضور</p></div>
+              <div class="flex-1 text-center"><p class="text-lg font-bold text-on-surface">${cbs.length}</p><p class="text-xs text-on-surface-variant">دفعة</p></div>
+            </div>
+            <div class="flex gap-2 mt-3">
+              <button onclick="openCourseBatches(${c.id})" class="flex-1 h-9 bg-primary/10 text-primary rounded-xl text-xs font-bold tap">دفعات (${cbs.length})</button>
+              <button onclick="editCourse(${c.id})" class="flex-1 h-9 bg-surface-container text-on-surface rounded-xl text-xs font-bold tap">تعديل</button>
             </div>
           </div>
         </div>
       `;
     }).join('');
   }
+
+  // ── ADMIN COURSE BATCHES (view/edit the batches of a course)
+  window.openCourseBatches = function (courseId) {
+    const c = store.courses.find(x => x.id === courseId);
+    if (!c) return;
+    haptic(5);
+    const t = document.getElementById('cbm-title');
+    if (t) t.textContent = 'دفعات الكورس — ' + c.title;
+    const list = document.getElementById('cbm-list');
+    const cbs = store.batches.filter(b => b.courseId === courseId);
+    if (!cbs.length) { list.innerHTML = emptyState('groups', 'لا توجد دفعات', 'لم تُنشأ أي دفعة لهذا الكورس بعد'); openModal('course-batches-modal'); return; }
+    list.innerHTML = cbs.map(b => `
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <div class="flex items-start justify-between">
+          <div>
+            <p class="font-bold text-on-surface text-sm">${escapeHtml(b.name)}</p>
+            <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(b.schedule)} · ${escapeHtml(b.location)}</p>
+            <p class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(b.instructor)}</p>
+          </div>
+          <span class="text-xs font-bold px-2 py-1 rounded-full" style="background:rgba(0,85,78,0.1);color:#00554e;">${b.studentIds.length} طالب</span>
+        </div>
+        <div class="flex gap-2 mt-3">
+          <button onclick="viewBatchStudents(${b.id})" class="flex-1 h-9 bg-primary/10 text-primary rounded-xl text-xs font-bold tap">عرض الطلاب</button>
+          <button onclick="editBatch(${b.id})" class="flex-1 h-9 bg-surface-container text-on-surface rounded-xl text-xs font-bold tap">تعديل</button>
+        </div>
+      </div>
+    `).join('');
+    openModal('course-batches-modal');
+  };
+
+  window.viewBatchStudents = function (id) {
+    const b = store.batches.find(x => x.id === id);
+    if (!b) return;
+    const names = b.studentIds.map(sid => { const u = store.users.find(x => x.id === sid); return u ? u.name : 'طالب'; });
+    showToast(b.name + ': ' + names.join('، '), 'info', 4000);
+  };
+
+  // Edit a batch's roster/schedule via a reused prompt-style mini form in the same modal
+  window.editBatch = function (id) {
+    const b = store.batches.find(x => x.id === id);
+    if (!b) return;
+    const list = document.getElementById('cbm-list');
+    const opts = store.users.filter(u => u.role === 'student').map(u =>
+      '<label class="flex items-center gap-2 px-2 py-1"><input type="checkbox" class="cbm-chk accent-primary" value="' + u.id + '"' + (b.studentIds.indexOf(u.id) !== -1 ? ' checked' : '') + '><span class="text-xs font-medium text-on-surface">' + escapeHtml(u.name) + '</span></label>').join('');
+    list.innerHTML = `
+      <div class="bg-white rounded-2xl p-4 shadow-sm">
+        <p class="font-bold text-on-surface text-sm">تعديل دفعة — ${escapeHtml(b.name)}</p>
+        <div class="flex flex-col gap-2 mt-3 max-h-56 overflow-y-auto">${opts}</div>
+        <button onclick="saveBatchEdit(${b.id})" class="mt-4 w-full h-11 bg-primary text-white font-bold text-sm rounded-xl tap">حفظ التعديل</button>
+      </div>`;
+  };
+
+  window.saveBatchEdit = function (id) {
+    const b = store.batches.find(x => x.id === id);
+    if (!b) return;
+    b.studentIds = Array.prototype.map.call(document.querySelectorAll('#cbm-list .cbm-chk:checked'), c => +c.value);
+    store.auditLog.unshift({ icon: 'edit', text: 'تعديل دفعة: ' + b.name, time: 'الآن', color: '#515f74' });
+    save();
+    const course = store.courses.find(c => c.id === b.courseId);
+    if (course) openCourseBatches(course.id); else closeModal('course-batches-modal');
+    showToast('تم حفظ تعديل الدفعة', 'success');
+  };
 
   /* ── ADMIN CERTS */
   function renderAdminCerts() {
@@ -1021,9 +1694,14 @@
                 <span class="text-xs text-on-surface-variant" style="font-family:monospace;">${escapeHtml(c.no)}</span>
               </div>
             </div>
-            <div class="text-left flex-shrink-0">
-              <p class="text-xs text-on-surface-variant">${escapeHtml(c.date)}</p>
-              <p class="text-sm font-bold text-on-surface mt-0.5">${c.att}%</p>
+            <div class="text-left flex-shrink-0 flex items-center gap-2">
+              <div>
+                <p class="text-xs text-on-surface-variant">${escapeHtml(c.date)}</p>
+                <p class="text-sm font-bold text-on-surface mt-0.5">${c.att}%</p>
+              </div>
+              <button onclick="deleteCert(${c.id})" class="w-8 h-8 rounded-full flex items-center justify-center tap" style="background:rgba(186,26,26,0.08);" aria-label="إلغاء الشهادة">
+                <span class="material-symbols-outlined text-sm" style="color:#ba1a1a;">delete</span>
+              </button>
             </div>
           </div>
         </div>
@@ -1046,6 +1724,55 @@
       `).join('');
     }
   }
+
+  window.deleteCert = function (id) {
+    const c = store.certs.find(x => x.id === id);
+    if (!c) return;
+    confirmAction('هل أنت متأكد من إلغاء/حذف الشهادة رقم "' + c.no + '" لـ ' + c.student + '؟', function () {
+      haptic(10);
+      store.certs = store.certs.filter(x => x.id !== id);
+      store.auditLog.unshift({ icon: 'delete', text: 'إلغاء شهادة: ' + c.no + ' — ' + c.student, time: 'الآن', color: '#ba1a1a' });
+      save();
+      renderAdminCerts();
+      showToast('تم إلغاء الشهادة', 'success');
+    });
+  };
+
+  window.issueCertsForEligible = function () {
+    let count = 0;
+    store.users.filter(u => u.role === 'student').forEach(u => {
+      const stats = attStats(u.id);
+      if (stats.pct >= 75) {
+        store.courses.forEach(course => {
+          const isEnrolled = store.batches.some(b => b.courseId === course.id && b.studentIds.indexOf(u.id) !== -1);
+          if (isEnrolled) {
+            const existing = store.certs.find(c => c.student === u.name && c.course === course.title);
+            if (!existing) {
+              const certNo = 'RTC-' + new Date().getFullYear() + '-' + String(Math.floor(100000 + Math.random() * 900000));
+              store.certs.push({
+                id: Date.now() + Math.random(),
+                student: u.name,
+                course: course.title,
+                date: formatArabicDate(new Date()),
+                no: certNo,
+                att: stats.pct,
+                status: 'issued'
+              });
+              count++;
+            }
+          }
+        });
+      }
+    });
+    if (count > 0) {
+      triggerCelebration();
+      save();
+      renderAdminCerts();
+      showToast('تم إصدار ' + count + ' شهادة جديدة للمستوفين الشروط 🎉', 'success');
+    } else {
+      showToast('لا يوجد طلاب مستوفين الجدد ينقصهم شهادات حالياً', 'info');
+    }
+  };
 
   /* ── ADMIN BRANCHES */
   function renderBranches() {
@@ -1092,7 +1819,7 @@
   function renderExport() {
     const el = document.getElementById('ab-export-log');
     if (!el) return;
-    if (!store.exports || !store.exports.length) { el.innerHTML = '<p class="text-xs text-on-surface-variant text-center py-6">لم يتم تصدير أي تقارير بعد</p>'; return; }
+    if (!store.exports || !store.exports.length) { el.innerHTML = emptyState('description', 'لا توجد تقارير مصدّرة بعد', 'صدّر تقرير حضور أو شهادات وستظهر نسخه هنا'); return; }
     el.innerHTML = store.exports.map(x => `
       <div class="flex items-center gap-3 p-3 rounded-xl bg-surface-container-low">
         <span class="material-symbols-outlined text-primary">${x.icon}</span>
@@ -1124,11 +1851,52 @@
   };
 
   window.exportPdf = function () {
+    const batch = currentBatch();
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      if (window.jspdf && window.jspdf.jsPDF) {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        doc.setFontSize(16);
+        doc.text("RTC Masar - Attendance Report", 14, 20);
+        doc.setFontSize(11);
+        doc.text("Batch: " + (batch.name || 'General'), 14, 30);
+        doc.text("Instructor: " + (batch.instructor || 'N/A'), 14, 37);
+        doc.text("Date: " + today, 14, 44);
+        doc.text("Total Students: " + batch.studentIds.length, 14, 51);
+        
+        let y = 65;
+        doc.setFontSize(10);
+        doc.text("Student ID / Name", 14, y);
+        doc.text("Attended", 110, y);
+        doc.text("Total", 145, y);
+        doc.text("Rate (%)", 175, y);
+        doc.line(14, y + 2, 195, y + 2);
+        
+        y += 10;
+        batch.studentIds.forEach(sid => {
+          const st = attStats(sid);
+          const name = userName(sid);
+          doc.text(String(name), 14, y);
+          doc.text(String(st.pres), 110, y);
+          doc.text(String(st.total), 145, y);
+          doc.text(st.pct + "%", 175, y);
+          y += 8;
+          if (y > 270) { doc.addPage(); y = 20; }
+        });
+        doc.save("Attendance-Report-" + batch.id + "-" + today + ".pdf");
+        showToast('تم إصداره وتنزيله كملف PDF بنجاح! 📄', 'success');
+      } else {
+        window.print();
+        showToast('تم فتح نافذة الطباعة / التصدير 📄', 'info');
+      }
+    } catch (e) {
+      showToast('تم إنشاء نسخة التقرير', 'info');
+    }
     store.exports = store.exports || [];
-    store.exports.unshift({ icon: 'picture_as_pdf', title: 'تصدير PDF — حضور دفعة A', time: 'الآن', size: 'مستند' });
+    store.exports.unshift({ icon: 'picture_as_pdf', title: 'تصدير PDF — ' + batch.name, time: 'الآن', size: batch.studentIds.length + ' صف' });
     save();
     renderExport();
-    showToast('جاري توليد ملف PDF...', 'info');
   };
 
   /* ── ADMIN BROADCAST */
@@ -1147,21 +1915,44 @@
     btn.style.borderColor = on ? 'transparent' : '#c4c5d5';
     haptic(5);
   };
-  window.sendBroadcast = function () {
+  window.sendBroadcast = function (btn) {
     const sel = Array.prototype.slice.call(document.querySelectorAll('#ab-audience button.active')).map(b => b.dataset.aud);
     const title = (document.getElementById('ab-title').value || '').trim();
     const body = (document.getElementById('ab-body').value || '').trim();
     const type = document.getElementById('ab-type').value;
     if (!sel.length) { showToast('اختر الجمهور المستهدف', 'error'); return; }
     if (!body) { showToast('اكتب نص الرسالة', 'error'); return; }
-    let n = 0;
+    const reset = setBtnLoading(btn, 'إرسال التنبيه');
+    // Resolve the selected audience to real student phones
+    const targets = [];
     sel.forEach(id => {
-      if (id === 'all-students') n = store.users.filter(u => u.role === 'student').length;
-      else { const b = store.batches.find(x => 'b' + x.id === id); if (b) n += b.studentIds.length; }
+      if (id === 'all-students') {
+        store.users.forEach(u => { if (u.role === 'student') targets.push(u); });
+      } else {
+        const b = store.batches.find(x => 'b' + x.id === id);
+        if (b) b.studentIds.forEach(sid => {
+          const u = store.users.find(x => x.id === sid);
+          if (u) targets.push(u);
+        });
+      }
     });
+    // Deduplicate by phone (a student can be in several selected batches)
+    const seen = {};
+    const audience = targets.filter(u => { const k = u.phone; return seen[k] ? false : (seen[k] = true); });
+    if (type === 'whatsapp') {
+      audience.forEach(u => window.open(whatsappLink(u.phone, body), '_blank', 'noopener'));
+      store.auditLog.unshift({ icon: 'notifications_active', text: 'إرسال واتساب جماعي لـ ' + audience.length + ' طالب', time: 'الآن', color: '#00288e' });
+      save();
+      reset();
+      showToast('تم فتح ' + audience.length + ' محادثة واتساب', 'success');
+      setTimeout(() => pop(), 900);
+      return;
+    }
+    const n = audience.length;
     store.notifications.unshift({ id: Date.now(), icon: 'notifications_active', title: title || 'تنبيه من الإدارة', body, time: 'الآن', unread: true });
     store.auditLog.unshift({ icon: 'notifications_active', text: 'إرسال تنبيه جماعي (' + type + ') لـ ' + n + ' طالب', time: 'الآن', color: '#00288e' });
     save();
+    reset();
     showToast('أُرسل التنبيه لـ ' + n + ' طالب', 'success');
     setTimeout(() => pop(), 900);
   };
@@ -1170,7 +1961,7 @@
   function renderAdminSettings() {
     const el = document.getElementById('as-audit');
     if (!el) return;
-    if (!store.auditLog.length) { el.innerHTML = '<p class="text-xs text-on-surface-variant text-center py-6">لا توجد عمليات مسجلة بعد</p>'; return; }
+    if (!store.auditLog.length) { el.innerHTML = emptyState('history', 'لا توجد عمليات مسجلة بعد', 'ستظهر كل العمليات والإجراءات هنا'); return; }
     el.innerHTML = store.auditLog.map(a => `
       <div class="bg-white rounded-2xl p-3 shadow-sm flex items-center gap-3">
         <div class="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style="background:${a.color}18;">
@@ -1228,7 +2019,7 @@
     _otpAttempts = 0;
     _otpLocked = false;
     // Re-enable OTP inputs in case they were locked
-    ['otp1','otp2','otp3','otp4','otp5','otp6'].forEach(id => {
+    ['o1','o2','o3','o4','o5','o6'].forEach(id => {
       const el = document.getElementById(id); if (el) { el.value = ''; el.disabled = false; }
     });
     const el = document.getElementById('otp-phone-display');
@@ -1253,24 +2044,23 @@
       showToast('تم تجاوز الحد المسموح. أعد إرسال الكود.', 'error');
       return;
     }
-    // Collect OTP digits from the 6 input boxes
-    const digits = ['otp1','otp2','otp3','otp4','otp5','otp6']
+    // Collect OTP digits from the 6 input boxes (ids are o1..o6 in index.html)
+    const digits = ['o1','o2','o3','o4','o5','o6']
       .map(id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; })
       .join('');
 
     if (digits.length < 4) { showToast('أدخل الكود كاملاً', 'error'); return; }
 
-    // DEMO MODE: accept "1234" for any of the quick-login roles,
-    // or the last-4-digits of the entered phone number.
-    const lastFour = _otpPhone ? _otpPhone.slice(-4) : '1234';
-    const valid = (digits === '123456' || digits === ('00' + lastFour) || digits === _otpCode);
+    // OTP verification: only the server-generated code is valid.
+    // No master codes, no last-4-digits fallback (CVE-RTC-002 fix).
+    const valid = !!_otpCode && digits === _otpCode;
 
     if (!valid) {
       _otpAttempts++;
       if (_otpAttempts >= 3) {
         _otpLocked = true;
         showToast('3 محاولات فاشلة. أعد إرسال الكود.', 'error');
-        ['otp1','otp2','otp3','otp4','otp5','otp6'].forEach(id => {
+        ['o1','o2','o3','o4','o5','o6'].forEach(id => {
           const el = document.getElementById(id); if (el) { el.value = ''; el.disabled = true; }
         });
       } else {
@@ -1337,26 +2127,84 @@
     });
   };
 
-  window.saveAttendance = function () {
+  window.saveAttendance = function (btn) {
+    const reset = setBtnLoading(btn, 'إغلاق المحاضرة وحفظ الحضور');
     const batch = currentBatch();
     const key = 'b' + batch.id + '-s' + (batch.lecturesDone + 1);
     const isNew = store.recordedSessions.indexOf(key) === -1;
     if (isNew) store.recordedSessions.push(key);
     const today = new Date().toISOString().slice(0, 10);
+    let celebrationsTriggered = false;
+
     batch.studentIds.forEach(sid => {
       const st = store.currentSession.recs[sid];
       if (!st) return;
       if (!store.attendance[sid]) store.attendance[sid] = [];
       store.attendance[sid].push({ date: today, status: st });
-      if (isNew && (st === 'present' || st === 'late')) {
-        const u = store.users.find(x => x.id === sid);
-        if (u) u.points = (u.points || 0) + (st === 'present' ? 10 : 3);
+      
+      const u = store.users.find(x => x.id === sid);
+      if (u) {
+        if (isNew && (st === 'present' || st === 'late')) {
+          const ptsEarned = st === 'present' ? 10 : 3;
+          u.points = (u.points || 0) + ptsEarned;
+
+          // Streak bonus rule (3+ consecutive present/late sessions)
+          const streak = consecutiveStreak(sid);
+          if (streak >= 3) {
+            u.points += 5; // Bonus
+            store.notifications.unshift({
+              id: Date.now() + Math.random(),
+              icon: 'local_fire_department',
+              title: 'بونص سلسلة حضور! 🔥',
+              body: 'حصلت على +5 نقاط بونص للحضور المتتالي (' + streak + ' جلسات)',
+              time: 'الآن',
+              unread: true
+            });
+          }
+        }
+
+        // PRD Certificate Rule Check: attendance rate >= 75%
+        const stats = attStats(sid);
+        const course = store.courses.find(c => c.id === batch.courseId);
+        if (course && stats.pct >= 75) {
+          const existingCert = store.certs.find(c => c.student === u.name && c.course === course.title);
+          if (!existingCert) {
+            const certNo = 'RTC-' + new Date().getFullYear() + '-' + String(Math.floor(100000 + Math.random() * 900000));
+            store.certs.push({
+              id: Date.now() + Math.random(),
+              student: u.name,
+              course: course.title,
+              date: formatArabicDate(new Date()),
+              no: certNo,
+              att: stats.pct,
+              status: 'issued'
+            });
+            celebrationsTriggered = true;
+            store.notifications.unshift({
+              id: Date.now() + Math.random(),
+              icon: 'workspace_premium',
+              title: 'مبروك! حصلت على شهادة معتمدة 🎉',
+              body: 'صدرت شهادتك في كورس ' + course.title + ' برقم توثيق ' + certNo,
+              time: 'الآن',
+              unread: true
+            });
+          }
+        }
       }
     });
+
     batch.lecturesDone++;
     store.auditLog.unshift({ icon: 'fact_check', text: 'تسجيل حضور — ' + batch.name + ' محاضرة ' + batch.lecturesDone, time: 'الآن', color: '#003c36' });
     save();
-    showToast('تم حفظ الحضور وتحديث نقاط الطلاب', 'success');
+    reset();
+
+    if (celebrationsTriggered) {
+      triggerCelebration();
+      showToast('🎉 تهانينا! تم إصدار شهادات جديدة للطلاب المستوفين للشروط!', 'success', 4000);
+    } else {
+      hapticPattern('success');
+      showToast('تم حفظ الحضور وتحديث نقاط الطلاب بنجاح', 'success');
+    }
     setTimeout(() => switchTab('v-home'), 1000);
   };
 
@@ -1376,14 +2224,27 @@
 
   window.openAddUserModal = function () {
     const title = document.querySelector('#add-user-modal h3');
-    if (title) title.textContent = '➕ إضافة مستخدم جديد';
+    if (title) title.innerHTML = '<span class="material-symbols-outlined text-xl text-primary">person_add</span> إضافة مستخدم جديد';
     editUserId = null;
+    const branchSel = document.getElementById('nu-branch');
+    if (branchSel) {
+      const branches = Array.from(new Set(store.users.map(x => x.branch).filter(Boolean).concat(['وسط البلد', 'مدينة نصر', 'الجيزة', 'الإسكندرية', 'المقر الرئيسي'])));
+      branchSel.innerHTML = branches.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+      branchSel.value = 'وسط البلد';
+    }
     openModal('add-user-modal');
   };
   window.openAddCourseModal = function () {
     const title = document.querySelector('#add-course-modal h3');
-    if (title) title.textContent = '📚 إنشاء كورس جديد';
+    if (title) title.innerHTML = '<span class="material-symbols-outlined text-xl text-primary">menu_book</span> إنشاء كورس جديد';
     editCourseId = null;
+    const sel = document.getElementById('nc-instructor');
+    if (sel) {
+      sel.innerHTML = '<option value="">— اختر المدرب —</option>' + store.users
+        .filter(u => u.role === 'volunteer')
+        .map(u => '<option value="' + u.id + '">' + escapeHtml(u.name) + '</option>')
+        .join('');
+    }
     openModal('add-course-modal');
   };
 
@@ -1409,6 +2270,12 @@
     confirmAction('هل أنت متأكد من حذف المستخدم "' + u.name + '"؟ لا يمكن التراجع عن هذا الإجراء.', function () {
       haptic(10);
       store.users = store.users.filter(x => x.id !== id);
+      // Data integrity: remove the deleted user from every batch roster + attendance
+      store.batches.forEach(bt => {
+        bt.studentIds = bt.studentIds.filter(s => s !== id);
+      });
+      if (store.attendance[id]) delete store.attendance[id];
+      if (store.currentSession && store.currentSession.recs) delete store.currentSession.recs[id];
       store.auditLog.unshift({ icon: 'person_remove', text: 'حذف مستخدم: ' + u.name, time: 'الآن', color: '#ba1a1a' });
       save();
       renderUsers();
@@ -1422,6 +2289,8 @@
     confirmAction('هل أنت متأكد من حذف الكورس "' + c.title + '"؟ لا يمكن التراجع عن هذا الإجراء.', function () {
       haptic(10);
       store.courses = store.courses.filter(x => x.id !== id);
+      // Data integrity: detach batches that referenced this course
+      store.batches.forEach(bt => { if (bt.courseId === id) bt.courseId = null; });
       store.auditLog.unshift({ icon: 'delete', text: 'حذف كورس: ' + c.title, time: 'الآن', color: '#ba1a1a' });
       save();
       renderAdminCourses();
@@ -1452,6 +2321,7 @@
     const rawName = (nameEl.value || '').trim();
     const phone = (phoneEl.value || '').trim();
     const role = (roleEl.value || '').trim();
+    const branch = (document.getElementById('nu-branch') || {}).value || 'وسط البلد';
     // Validate name: Arabic/English letters and spaces only
     const NAME_RE = /^[\u0600-\u06FF\u0750-\u077Fa-zA-Z\s/.-]{2,60}$/;
     if (!rawName || !NAME_RE.test(rawName)) { fieldError(nameEl, 'اكتب الاسم بالكامل (حروف فقط، 2-60 حرف)'); return; }
@@ -1460,23 +2330,26 @@
     if (VALID_ROLES.indexOf(role) === -1) { showToast('دور غير صحيح', 'error'); return; }
     if (store.users.some(u => u.phone === phone && u.id !== editUserId)) { fieldError(phoneEl, 'رقم الموبايل مستخدم مسبقاً'); return; }
     fieldError(nameEl, ''); fieldError(phoneEl, '');
+    const reset = setBtnLoading(e.submitter || e.target.querySelector('[type="submit"]'), 'حفظ المستخدم');
     // Store plain text (escaped on render via escapeHtml())
     const name = rawName;
     if (editUserId !== null) {
       // Edit mode: update existing user instead of inserting
       const u = store.users.find(x => x.id === editUserId);
-      if (!u) { showToast('المستخدم غير موجود', 'error'); return; }
-      u.name = name; u.phone = phone; u.role = role;
+      if (!u) { reset(); showToast('المستخدم غير موجود', 'error'); return; }
+      u.name = name; u.phone = phone; u.role = role; u.branch = branch;
       u.avatar = name[0] + (name[1] || '');
       store.auditLog.unshift({ icon: 'edit', text: 'تعديل بيانات مستخدم: ' + name, time: 'الآن', color: '#515f74' });
       save();
+      reset();
       closeModal('add-user-modal');
       renderUsers();
       showToast('تم تعديل ' + name + ' بنجاح!', 'success');
     } else {
-      store.users.push({ id: Date.now(), name, phone, role, branch: 'وسط البلد', avatar: name[0] + (name[1] || ''), status: 'active', points: 0 });
+      store.users.push({ id: Date.now(), name, phone, role, branch, avatar: name[0] + (name[1] || ''), status: 'active', points: 0 });
       store.auditLog.unshift({ icon: 'person_add', text: 'تم إضافة ' + name, time: 'الآن', color: '#00288e' });
       save();
+      reset();
       closeModal('add-user-modal');
       renderUsers();
       showToast('تم إضافة ' + name + ' بنجاح!', 'success');
@@ -1493,6 +2366,12 @@
     document.getElementById('nu-name').value = u.name;
     document.getElementById('nu-phone').value = u.phone;
     document.getElementById('nu-role').value = u.role;
+    const branchSel = document.getElementById('nu-branch');
+    if (branchSel) {
+      const branches = Array.from(new Set(store.users.map(x => x.branch).filter(Boolean).concat(['وسط البلد', 'مدينة نصر', 'الجيزة', 'الإسكندرية', 'المقر الرئيسي'])));
+      branchSel.innerHTML = branches.map(b => '<option value="' + escapeHtml(b) + '">' + escapeHtml(b) + '</option>').join('');
+      branchSel.value = u.branch || '';
+    }
     const nameErr = document.getElementById('nu-name').parentElement.querySelector('.err-txt');
     const phoneErr = document.getElementById('nu-phone').parentElement.querySelector('.err-txt');
     if (nameErr) nameErr.style.display = 'none';
@@ -1501,7 +2380,7 @@
     document.getElementById('nu-phone').classList.remove('invalid');
     editUserId = uid;
     const title = document.querySelector('#add-user-modal h3');
-    if (title) title.textContent = '✏️ تعديل بيانات المستخدم';
+    if (title) title.innerHTML = '<span class="material-symbols-outlined text-xl text-primary">edit</span> تعديل بيانات المستخدم';
     openModal('add-user-modal');
   };
 
@@ -1511,21 +2390,32 @@
     const title = titleEl.value.trim();
     if (!title) { fieldError(titleEl, 'اكتب اسم الكورس'); return; }
     fieldError(titleEl, '');
-    const cat = document.getElementById('nc-cat').value || 'عام';
+    const reset = setBtnLoading(e.submitter || e.target.querySelector('[type="submit"]'), 'إنشاء الكورس');
+    const cat = document.getElementById('nc-cat').value.trim() || 'عام';
+    const sessions = +(document.getElementById('nc-sessions').value || 8) || 8;
+    const startDate = document.getElementById('nc-start').value || '2026-08-10';
+    const scheduleText = document.getElementById('nc-schedule').value.trim() || '';
+    const location = document.getElementById('nc-location').value.trim() || '';
+    const description = document.getElementById('nc-desc').value.trim() || '';
+    const instructorId = +(document.getElementById('nc-instructor').value) || null;
+    const maxStudents = +(document.getElementById('nc-max').value || 30) || 30;
+    const data = { title, cat, sessions, startDate, scheduleText, location, description, instructorId, maxStudents };
     if (editCourseId !== null) {
       const c = store.courses.find(x => x.id === editCourseId);
-      if (!c) { showToast('الكورس غير موجود', 'error'); return; }
-      c.title = title; c.cat = cat;
+      if (!c) { reset(); showToast('الكورس غير موجود', 'error'); return; }
+      Object.assign(c, data);
       store.auditLog.unshift({ icon: 'edit', text: 'تعديل بيانات كورس: ' + title, time: 'الآن', color: '#515f74' });
       save();
+      reset();
       closeModal('add-course-modal');
       renderAdminCourses();
       renderAdminHome();
       showToast('تم تعديل كورس "' + title + '"!', 'success');
     } else {
-      store.courses.push({ id: Date.now(), title, cat, icon: 'auto_stories', color: '#515f74', sessions: 8, enrolled: 0 });
+      store.courses.push(Object.assign({ id: Date.now(), icon: 'auto_stories', color: '#515f74', enrolled: 0 }, data));
       store.auditLog.unshift({ icon: 'add_circle', text: 'إنشاء كورس: ' + title, time: 'الآن', color: '#00288e' });
       save();
+      reset();
       closeModal('add-course-modal');
       renderAdminCourses();
       renderAdminHome();
@@ -1542,13 +2432,53 @@
     haptic(5);
     document.getElementById('nc-title').value = c.title;
     document.getElementById('nc-cat').value = c.cat || '';
+    document.getElementById('nc-sessions').value = c.sessions || 8;
+    document.getElementById('nc-start').value = c.startDate || '';
+    document.getElementById('nc-schedule').value = c.scheduleText || '';
+    document.getElementById('nc-location').value = c.location || '';
+    document.getElementById('nc-desc').value = c.description || '';
+    const sel = document.getElementById('nc-instructor');
+    if (sel) {
+      sel.innerHTML = '<option value="">— اختر المدرب —</option>' + store.users
+        .filter(u => u.role === 'volunteer')
+        .map(u => '<option value="' + u.id + '">' + escapeHtml(u.name) + '</option>')
+        .join('');
+      sel.value = c.instructorId || '';
+    }
+    document.getElementById('nc-max').value = c.maxStudents || 30;
     const titleErr = document.getElementById('nc-title').parentElement.querySelector('.err-txt');
     if (titleErr) titleErr.style.display = 'none';
     document.getElementById('nc-title').classList.remove('invalid');
     editCourseId = cid;
     const title = document.querySelector('#add-course-modal h3');
-    if (title) title.textContent = '✏️ تعديل بيانات الكورس';
+    if (title) title.innerHTML = '<span class="material-symbols-outlined text-xl text-primary">edit</span> تعديل بيانات الكورس';
     openModal('add-course-modal');
+  };
+
+  // Real enrollment: add the current student to the course's batch, update counters
+  window.enrollCourse = function (courseId) {
+    haptic(8);
+    const c = store.courses.find(x => x.id === courseId);
+    if (!c) { showToast('الكورس غير موجود', 'error'); return; }
+    const me = currentStudent();
+    let batch = store.batches.find(b => b.courseId === courseId);
+    if (!batch) {
+      const id = Math.max(0, ...store.batches.map(b => b.id)) + 1;
+      batch = { id, name: 'دفعة — ' + c.title, courseId, instructor: courseInstructor(c), schedule: c.scheduleText || '', location: c.location || '', studentIds: [], lecturesDone: 0 };
+      store.batches.push(batch);
+    }
+    if (batch.studentIds.indexOf(me.id) !== -1) { showToast('أنت مسجّل بالفعل في هذا الكورس', 'warning'); return; }
+    const max = c.maxStudents || 30;
+    if (batch.studentIds.length >= max) { showToast('اكتمل العدد في هذا الكورس', 'error'); return; }
+    batch.studentIds.push(me.id);
+    c.enrolled = batch.studentIds.length;
+    store.auditLog.unshift({ icon: 'person_add', text: 'تسجيل ' + me.name + ' في كورس: ' + c.title, time: 'الآن', color: '#00288e' });
+    store.notifications.unshift({ id: Date.now(), icon: 'how_to_reg', title: 'تم التسجيل في الكورس ✓', body: 'سجّلت في "' + c.title + '" — يبدأ ' + (c.startDate || 'قريباً'), time: 'الآن', unread: true });
+    save();
+    _viewCourseId = courseId;
+    renderCourseDetail();
+    showToast('تم تسجيلك في "' + c.title + '"!', 'success');
+    setTimeout(() => switchTab('s-courses'), 1200);
   };
 
   // Cert pane switcher
@@ -1565,30 +2495,43 @@
   window.toggleSwitch = function (id) {
     const el = document.getElementById(id);
     if (!el) return;
-    el.classList.toggle('on');
-    el.classList.toggle('off');
+    const wasOn = el.classList.contains('on');
+    el.classList.toggle('on', !wasOn);
+    el.classList.toggle('off', wasOn);
+    haptic(8);
+    if (el.getAttribute('role') === 'switch') {
+      el.setAttribute('aria-checked', wasOn ? 'false' : 'true');
+    }
   };
+
+  function _syncDarkToggles(isDark) {
+    ['tog-dark', 'tog-backup-dark'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.classList.toggle('on', isDark);
+        el.classList.toggle('off', !isDark);
+        if (el.getAttribute('role') === 'switch') el.setAttribute('aria-checked', isDark ? 'true' : 'false');
+      }
+    });
+  }
 
   // Dark mode
   window.toggleDarkMode = function () {
     const root = document.documentElement;
     const on = root.getAttribute('data-theme') === 'dark';
-    root.setAttribute('data-theme', on ? 'light' : 'dark');
-    localStorage.setItem('rtc_theme', on ? 'light' : 'dark');
-    try { if (navigator.vibrate) navigator.vibrate(5); } catch (e) {}
-    // Sync both toggle switches
-    ['tog-dark', 'tog-backup-dark'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.classList.toggle('on', !on);
-        el.classList.toggle('off', on);
-      }
-    });
+    const next = !on;
+    root.setAttribute('data-theme', next ? 'dark' : 'light');
+    localStorage.setItem('rtc_theme', next ? 'dark' : 'light');
+    haptic(8);
+    _syncDarkToggles(next);
   };
   // Restore saved theme on load
   (function restoreTheme() {
     if (localStorage.getItem('rtc_theme') === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
+      _syncDarkToggles(true);
+    } else {
+      _syncDarkToggles(false);
     }
   })();
 
@@ -1619,6 +2562,7 @@
   window.push = push;
   window.pop = pop;
   window.switchTab = switchTab;
+  window.setBtnLoading = setBtnLoading;
 
   /* ═══════════════════════════════════════════════
      TOAST
@@ -1661,6 +2605,16 @@
       // Tampered role — clear it
       localStorage.removeItem('rtc_role_v2');
     }
+
+    // Sync dark mode toggle UI state with the saved theme
+    // (restoreTheme() runs before DOMContentLoaded, so toggles must be updated here)
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    ['tog-dark', 'tog-backup-dark'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('on', isDark);
+      el.classList.toggle('off', !isDark);
+    });
 
     // Auto-advance splash after 2s
     setTimeout(function () {

@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<!-- CVE-RTC-003 Fix: Content Security Policy -->
+<!-- CVE-RTC-003 Fix: Content Security Policy (Updated for jsPDF) -->
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'self';
-  script-src 'self' https://cdn.tailwindcss.com 'unsafe-inline';
+  script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline';
   style-src 'self' https://fonts.googleapis.com 'unsafe-inline';
   font-src 'self' https://fonts.gstatic.com;
   img-src 'self' data: blob:;
@@ -20,11 +20,12 @@
 <meta name="description" content="نظام متابعة مستفيدي الكورسات المجانية — مركز رسالة التدريبي">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link href="manifest.json" rel="manifest">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
-  darkMode:"class",
+  darkMode: ["class", '[data-theme="dark"]'],
   theme:{extend:{colors:{
     "primary":"#00288e","on-primary":"#ffffff","primary-container":"#1e40af","on-primary-container":"#a8b8ff",
     "primary-fixed":"#dde1ff","primary-fixed-dim":"#b8c4ff","on-primary-fixed":"#001453","on-primary-fixed-variant":"#173bab",
@@ -44,12 +45,57 @@ tailwind.config = {
 };
 </script>
 <style>
+:root {
+  color-scheme: light dark;
+}
 *{-webkit-tap-highlight-color:transparent;box-sizing:border-box;}
 body{
   overscroll-behavior-y:none;
   font-family:'IBM Plex Sans Arabic','Inter',sans-serif;
   background:#111827;
   margin:0; padding:0;
+}
+/* ════════════════
+   DESIGN SYSTEM: icon tiles, Arabic-safe text, spacing scale
+   ════════════════ */
+/* Shared icon container — consistent optical tile for Material Symbols.
+   Apply .icon-tile to standardize floating icons that lack a vessel. */
+.icon-tile{
+  width:48px; height:48px; border-radius:14px;
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+  background:var(--icon-tile-bg,#eceef0);
+  color:var(--icon-tile-fg,#00288e);
+}
+.icon-tile .material-symbols-outlined{font-size:24px;line-height:1;}
+/* Arabic-safe text: taller line-height (descending strokes ھ/ة/ج), no glyph clipping. */
+.rtl, .screen, .glass-header, .modal-sheet,
+.text-2xs, .text-xs, .text-sm, .text-base{
+  line-height:1.55; /* Material 3 Arab default ~1.6 for Arabic; generous for diacritics */
+  overflow-wrap:break-word;
+  word-break:break-word;
+}
+/* Prevent Arabic glyphs from being cut by tight 1-line containers */
+p, button, h1, h2, h3, h4, span[class*=" font"], .truncate{
+  text-overflow:ellipsis;
+}
+/* Spacing scale tokens (4/8/12/16/24/32) — consistency guard */
+.space-scale-4{margin:4px;padding:4px;}
+.space-scale-8{margin:8px;padding:8px;}
+.space-scale-12{margin:12px;padding:12px;}
+.space-scale-16{margin:16px;padding:16px;}
+.space-scale-24{margin:24px;padding:24px;}
+/* Icon tile minimum touch target for small bare icon buttons only (40px is a bit tight).
+   Only bump the circular action buttons (back/profile/notif), not content tiles which
+   must stay 40px to align flush in rows. */
+.w-10:has(.material-symbols-outlined){min-width:44px;min-height:44px;}
+@media(prefers-reduced-motion:reduce){
+  .icon-tile,button,.toggle-track,.toggle-thumb,.att-btn{
+    transition:none !important;
+  }
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .icon-tile{--icon-tile-bg:#1a2231;--icon-tile-fg:#a8b8ff;}
 }
 /* App shell — phone frame on desktop */
 #app{
@@ -93,7 +139,7 @@ body{
 /* Bottom nav */
 .bottom-nav{
   position:absolute; bottom:0; left:0; right:0; z-index:40;
-  background:rgba(247,249,251,0.88);
+  background:rgba(247,249,251,0.92);
   backdrop-filter:blur(24px);
   -webkit-backdrop-filter:blur(24px);
   border-top:1px solid rgba(196,197,213,0.35);
@@ -102,13 +148,77 @@ body{
 .nav-btn{
   flex:1; height:64px; display:flex; flex-direction:column;
   align-items:center; justify-content:center; gap:2px;
-  color:#757684; cursor:pointer; transition:color 0.2s;
-  background:none; border:none; padding:0;
+  color:#757684; cursor:pointer; transition:color 0.2s, transform 0.2s;
+  background:none; border:none; padding:0; position:relative;
 }
 .nav-btn.active{color:#00288e;}
-.nav-btn.active .nav-icon{font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;}
-.nav-icon{font-size:22px; transition:font-variation-settings 0.2s;}
+.nav-btn.active .nav-icon{
+  transform:scale(1.15);
+  transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  font-variation-settings:'FILL' 1,'wght' 500,'GRAD' 0,'opsz' 24;
+}
+.nav-icon{font-size:22px; transition:font-variation-settings 0.2s, transform 0.2s;}
 .nav-lbl{font-size:10px; font-weight:600; letter-spacing:0.01em;}
+
+/* Material symbols helpers & FOUT guard */
+.material-symbols-outlined {
+  font-display: block;
+  flex-shrink: 0;
+  user-select: none;
+}
+.icon-filled { font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24; }
+.icon-outline { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+/* Directional Icon Flips for RTL */
+[dir="rtl"] .icon-back { transform: scaleX(-1); display: inline-block; }
+[dir="rtl"] .icon-forward { transform: scaleX(-1); display: inline-block; }
+
+/* 3D Press Button Style (Duolingo Tactile Feel) */
+.btn-3d {
+  position: relative;
+  border-bottom: 4px solid rgba(0,0,0,0.22);
+  transition: transform 0.1s ease, border-bottom-width 0.1s ease;
+}
+.btn-3d:active {
+  transform: translateY(3px);
+  border-bottom-width: 1px;
+}
+.btn-primary-3d {
+  background: #00288e;
+  color: #ffffff;
+  border-bottom: 4px solid #001859;
+  transition: transform 0.1s ease, border-bottom-width 0.1s ease, background-color 0.15s ease;
+}
+.btn-primary-3d:active {
+  transform: translateY(3px);
+  border-bottom-width: 1px;
+  background: #001f70;
+}
+
+/* Ripple effect container */
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+.ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(0);
+  animation: rippleAnim 0.6s linear;
+  background: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+@keyframes rippleAnim {
+  to { transform: scale(4); opacity: 0; }
+}
+
+/* Desktop Hover States */
+@media (hover: hover) and (pointer: fine) {
+  .tap:hover { filter: brightness(0.97); }
+  .btn-primary-3d:hover { background-color: #002075; }
+  .nav-btn:hover { color: #00288e; }
+}
+
 /* Scroll no-bar */
 .no-scrollbar::-webkit-scrollbar{display:none;}
 .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none;}
@@ -219,6 +329,22 @@ body{
 .inp:focus{border-color:#00288e;background:white;}
 .inp::placeholder{color:rgba(117,118,132,0.7);}
 .inp.invalid{border-color:#ba1a1a;background:#fff5f5;}
+/* Selects: consistent with .inp (custom chevron instead of native arrow) */
+select.inp{appearance:none;-webkit-appearance:none;cursor:pointer;
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23757684" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');
+  background-repeat:no-repeat;background-position:left 16px center;
+  padding-inline-start:16px;padding-inline-end:42px;}
+[data-theme="dark"] select.inp, .dark select.inp{
+  background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%236b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>');}
+/* Number inputs: spinner-less on mobile */
+input[type="number"]{-moz-appearance:textfield;appearance:none;}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+/* Date inputs follow .inp; keep calendar icon visible + tinted in dark */
+input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:pointer;}
+[data-theme="dark"] input[type=date].inp::-webkit-calendar-picker-indicator, .dark input[type=date].inp::-webkit-calendar-picker-indicator{filter:invert(0.75);}
+/* Button spinner */
+.anim-spin{animation:spin 0.9s linear infinite;}
 .err-txt{font-size:11px;color:#ba1a1a;margin-top:6px;display:none;font-weight:600;}
 /* Skeleton shimmer */
 .skel{position:relative;overflow:hidden;background:#eceef0;border-radius:12px;}
@@ -228,63 +354,94 @@ body{
 .empty-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 24px;text-align:center;}
 /* Pulsing dot */
 .pulse-dot{animation:pulse 2s ease-in-out infinite;}
-/* Toggle switch */
+
+/* Toggle switch — physical, logical-direction aware, spring motion, RTL-safe */
 .toggle-track{
-  width:48px; height:28px; border-radius:14px;
-  display:flex; align-items:center; cursor:pointer;
-  transition:background 0.2s; padding:3px;
+  position:relative;
+  width:52px; height:32px; border-radius:16px;
+  display:inline-flex; align-items:center; cursor:pointer;
+  padding:2px; flex-shrink:0;
+  transition:background 0.25s cubic-bezier(0.16,1,0.3,1);
+  border:1px solid rgba(0,0,0,0.08);
+  box-shadow:inset 0 2px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
+  -webkit-tap-highlight-color:transparent;
 }
+/* Thumb uses INSET-inline (logical property) — always moves toward the END edge
+   which is LEFT in RTL and RIGHT in LTR. No left/right/translateX hacks. */
 .toggle-thumb{
-  width:22px; height:22px; border-radius:50%; background:white;
-  box-shadow:0 1px 4px rgba(0,0,0,0.2); transition:transform 0.2s;
+  width:26px; height:26px; border-radius:50%; background:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,0.28), 0 1px 1px rgba(0,0,0,0.12);
+  transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1);
+  will-change:transform;
 }
+/* ON: thumb travels toward the inline-end. Inline-end flips automatically with dir. */
 .toggle-track.on{background:#00288e;}
 .toggle-track.off{background:#c4c5d5;}
-.toggle-track.on .toggle-thumb{transform:translateX(20px);}
+.toggle-track.on .toggle-thumb{transform:translateX(22px);}
+/* RTL: inline end is LEFT → mirror the travel. Autofit via calc so it never overflows. */
+[dir="rtl"] .toggle-track.on .toggle-thumb{transform:translateX(-22px);}
+/* Micro pulse on toggle for a physical "click" */
+.toggle-track:active .toggle-thumb{transform:translateX(22px) scale(0.9);}
+[dir="rtl"] .toggle-track:active .toggle-thumb{transform:translateX(-22px) scale(0.9);}
+.toggle-track.on:active{background:#053a9e;}
+.toggle-track:focus-visible{outline:3px solid rgba(0,40,142,0.4);outline-offset:2px;}
 
 /* ════════════════════
-   DARK MODE (OLED)
+   DARK MODE (OLED) — Supports both html[data-theme="dark"] AND html.dark
    ════════════════════ */
-html[data-theme="dark"] body{background:#05070d;}
-html[data-theme="dark"] #app{background:#0d1117;box-shadow:0 0 60px rgba(0,0,0,0.8);}
-html[data-theme="dark"] .screen{background:#0d1117;}
-html[data-theme="dark"] .glass-header,
-html[data-theme="dark"] .bottom-nav{
-  background:rgba(13,17,23,0.88);
+[data-theme="dark"] body, .dark body{background:#05070d; color:#e7e9ee;}
+[data-theme="dark"] #app, .dark #app{background:#0d1117;box-shadow:0 0 60px rgba(0,0,0,0.8);}
+[data-theme="dark"] .screen, .dark .screen{background:#0d1117;}
+[data-theme="dark"] .glass-header, .dark .glass-header,
+[data-theme="dark"] .bottom-nav, .dark .bottom-nav{
+  background:rgba(13,17,23,0.92);
   border-color:rgba(255,255,255,0.08);
 }
-html[data-theme="dark"] .bottom-nav{box-shadow:0 -2px 20px rgba(0,0,0,0.4);}
-html[data-theme="dark"] .bg-white{background:#1a2231 !important;}
-html[data-theme="dark"] .bg-surface-container-low{background:#151c2a !important;}
-html[data-theme="dark"] .bg-surface-container{background:#1a2231 !important;}
-html[data-theme="dark"] .bg-surface-container-high{background:#232c3d !important;}
-html[data-theme="dark"] .bg-surface-container-lowest{background:#1a2231 !important;}
-html[data-theme="dark"] .modal-sheet{background:#151c2a;}
-html[data-theme="dark"] .text-on-surface{color:#e7e9ee !important;}
-html[data-theme="dark"] .text-on-surface-variant{color:#9aa3b5 !important;}
-html[data-theme="dark"] .text-outline{color:#6b7280 !important;}
-html[data-theme="dark"] .border-outline-variant\/30{border-color:rgba(255,255,255,0.08) !important;}
-html[data-theme="dark"] .border-outline-variant{border-color:rgba(255,255,255,0.15) !important;}
-html[data-theme="dark"] .inp{background:#1a2231;color:#e7e9ee;border-color:rgba(255,255,255,0.1);}
-html[data-theme="dark"] .inp::placeholder{color:rgba(154,163,181,0.6);}
-html[data-theme="dark"] .inp:focus{background:#232c3d;border-color:#3b5bdb;}
-html[data-theme="dark"] .otp-box{background:#1a2231;color:#e7e9ee;border-color:#2a3548;}
-html[data-theme="dark"] .otp-box:focus{border-color:#3b5bdb;}
-html[data-theme="dark"] .otp-box.filled{border-color:#3b5bdb;background:#1e40af;}
-html[data-theme="dark"] .seg.active{background:#232c3d;color:#fff;}
-html[data-theme="dark"] .att-btn{background:#1a2231;border-color:#2a3548;color:#9aa3b5;}
-html[data-theme="dark"] .nav-btn{color:#6b7280;}
-html[data-theme="dark"] .nav-btn.active{color:#a8b8ff;}
-html[data-theme="dark"] .skel{background:#1a2231;}
-html[data-theme="dark"] .skel::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);}
-html[data-theme="dark"] .cert-gold-border{border-color:rgba(212,175,55,0.3);}
-html[data-theme="dark"] .glass-header .bg-surface-container,
-html[data-theme="dark"] .scr-body-full .bg-surface-container{background:#1a2231 !important;}
-html[data-theme="dark"] .empty-state .bg-surface-container{background:#1a2231 !important;}
-html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
+[data-theme="dark"] .bottom-nav, .dark .bottom-nav{box-shadow:0 -2px 20px rgba(0,0,0,0.4);}
+[data-theme="dark"] .bg-white, .dark .bg-white{background:#1a2231 !important; color:#e7e9ee;}
+[data-theme="dark"] .bg-surface-container-low, .dark .bg-surface-container-low{background:#151c2a !important;}
+[data-theme="dark"] .bg-surface-container, .dark .bg-surface-container{background:#1a2231 !important;}
+[data-theme="dark"] .bg-surface-container-high, .dark .bg-surface-container-high{background:#232c3d !important;}
+[data-theme="dark"] .bg-surface-container-lowest, .dark .bg-surface-container-lowest{background:#1a2231 !important;}
+[data-theme="dark"] .modal-sheet, .dark .modal-sheet{background:#151c2a; color:#e7e9ee;}
+[data-theme="dark"] .text-on-surface, .dark .text-on-surface{color:#e7e9ee !important;}
+[data-theme="dark"] .text-on-surface-variant, .dark .text-on-surface-variant{color:#9aa3b5 !important;}
+[data-theme="dark"] .text-outline, .dark .text-outline{color:#6b7280 !important;}
+[data-theme="dark"] .border-outline-variant\/30, .dark .border-outline-variant\/30{border-color:rgba(255,255,255,0.08) !important;}
+[data-theme="dark"] .border-outline-variant, .dark .border-outline-variant{border-color:rgba(255,255,255,0.15) !important;}
+[data-theme="dark"] .inp, .dark .inp{background:#1a2231;color:#e7e9ee;border-color:rgba(255,255,255,0.1);}
+[data-theme="dark"] .inp::placeholder, .dark .inp::placeholder{color:rgba(154,163,181,0.6);}
+[data-theme="dark"] .inp:focus, .dark .inp:focus{background:#232c3d;border-color:#3b5bdb;}
+[data-theme="dark"] .otp-box, .dark .otp-box{background:#1a2231;color:#e7e9ee;border-color:#2a3548;}
+[data-theme="dark"] .otp-box:focus, .dark .otp-box:focus{border-color:#3b5bdb;}
+[data-theme="dark"] .otp-box.filled, .dark .otp-box.filled{border-color:#3b5bdb;background:#1e40af;}
+[data-theme="dark"] .seg.active, .dark .seg.active{background:#232c3d;color:#fff;}
+[data-theme="dark"] .att-btn, .dark .att-btn{background:#1a2231;border-color:#2a3548;color:#9aa3b5;}
+[data-theme="dark"] .nav-btn, .dark .nav-btn{color:#6b7280;}
+[data-theme="dark"] .nav-btn.active, .dark .nav-btn.active{color:#a8b8ff;}
+[data-theme="dark"] .skel, .dark .skel{background:#1a2231;}
+[data-theme="dark"] .skel::after, .dark .skel::after{background:linear-gradient(90deg,transparent,rgba(255,255,255,0.08),transparent);}
+[data-theme="dark"] .cert-gold-border, .dark .cert-gold-border{border-color:rgba(212,175,55,0.3);}
+[data-theme="dark"] .glass-header .bg-surface-container, .dark .glass-header .bg-surface-container,
+[data-theme="dark"] .scr-body-full .bg-surface-container, .dark .scr-body-full .bg-surface-container{background:#1a2231 !important;}
+[data-theme="dark"] .empty-state .bg-surface-container, .dark .empty-state .bg-surface-container{background:#1a2231 !important;}
+[data-theme="dark"] .toggle-track.off, .dark .toggle-track.off{background:#2a3548;}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 </style>
 </head>
 <body>
+
+<!-- Confetti Canvas for Celebrations -->
+<canvas id="confetti-canvas" class="pointer-events-none fixed inset-0 z-[150] w-full h-full" style="display:none;"></canvas>
 
 <div id="app">
 
@@ -351,9 +508,18 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
         <div>
           <p class="text-center text-xs text-on-surface-variant font-medium mb-3">دخول سريع للمعاينة:</p>
           <div class="flex gap-2">
-            <button onclick="quickLogin('student')" class="flex-1 py-3 rounded-2xl bg-secondary-container text-on-surface text-xs font-bold tap">🎓 طالب</button>
-            <button onclick="quickLogin('volunteer')" class="flex-1 py-3 rounded-2xl bg-secondary-container text-on-surface text-xs font-bold tap">🤝 متطوع</button>
-            <button onclick="quickLogin('admin')" class="flex-1 py-3 rounded-2xl bg-secondary-container text-on-surface text-xs font-bold tap">⚙️ أدمن</button>
+            <button onclick="quickLogin('student')" class="flex-1 min-h-[52px] py-2.5 rounded-2xl bg-secondary-container text-on-secondary-container text-xs font-bold tap flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-xl" aria-hidden="true">school</span>
+              <span>طالب</span>
+            </button>
+            <button onclick="quickLogin('volunteer')" class="flex-1 min-h-[52px] py-2.5 rounded-2xl bg-secondary-container text-on-secondary-container text-xs font-bold tap flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-xl" aria-hidden="true">handshake</span>
+              <span>متطوع</span>
+            </button>
+            <button onclick="quickLogin('admin')" class="flex-1 min-h-[52px] py-2.5 rounded-2xl bg-secondary-container text-on-secondary-container text-xs font-bold tap flex flex-col items-center justify-center gap-1">
+              <span class="material-symbols-outlined text-xl" aria-hidden="true">settings</span>
+              <span>أدمن</span>
+            </button>
           </div>
         </div>
       </div>
@@ -424,7 +590,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
           <div><p class="text-white/75 text-sm">أهلاً بك يا</p><h2 class="text-white text-[22px] font-bold mt-0.5" id="sh-student-name">أحمد محمد 👋</h2><p class="text-white/60 text-xs mt-1.5">فرع وسط البلد — طالب نشط</p></div>
           <div class="bg-white/20 rounded-2xl px-3 py-2 border border-white/15 text-center">
             <p class="text-white/65 text-xs">المستوى</p>
-            <p class="text-white font-bold text-xl">2 ⭐</p>
+            <p class="text-white font-bold text-xl" id="sh-level">2 ⭐</p>
           </div>
         </div>
         <div class="flex gap-3 mt-4">
@@ -437,12 +603,12 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
             <p class="text-white/65 text-xs mt-0.5">نقطة</p>
           </div>
           <div class="flex-1 bg-white/15 rounded-xl p-3 text-center">
-            <p class="text-white text-xl font-bold">🔥 5</p>
+            <p class="text-white text-xl font-bold" id="sh-streak">🔥 5</p>
             <p class="text-white/65 text-xs mt-0.5">سلسلة</p>
           </div>
         </div>
       </div>
-      <div class="h-1.5 bg-white/15"><div class="h-full rounded-full" style="width:82%;background:#89f5e7;"></div></div>
+      <div class="h-1.5 bg-white/15"><div class="h-full rounded-full" id="sh-att-bar" style="width:82%;background:#89f5e7;"></div></div>
     </div>
     <!-- Next lecture -->
     <div class="anim-fiu" style="animation-delay:0.1s;">
@@ -521,28 +687,33 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
           </div>
           <div>
             <p class="text-white/75 text-xs">نسبة الحضور</p>
-            <p class="text-white font-bold text-base">8 من 10 محاضرات</p>
+            <p class="text-white font-bold text-base"><span id="cd-sessions-count">8</span> من <span id="cd-sessions-total">10</span> محاضرات</p>
             <div class="flex gap-3 mt-1.5">
-              <span class="text-xs" style="color:#89f5e7;">✓ 8 حاضر</span>
-              <span class="text-xs text-error-container">✗ 1 غائب</span>
-              <span class="text-xs text-amber-200">⏰ 1 متأخر</span>
+              <span class="text-xs" style="color:#89f5e7;"><span id="cd-present">✓ 8 حاضر</span></span>
+              <span class="text-xs text-error-container"><span id="cd-absent">✗ 1 غائب</span></span>
+              <span class="text-xs text-amber-200"><span id="cd-late">⏰ 1 متأخر</span></span>
             </div>
           </div>
         </div>
         <div class="mt-4 bg-white/10 rounded-2xl p-3 flex items-center gap-2 border border-white/10">
-          <span class="material-symbols-outlined text-xl" style="color:#89f5e7;font-variation-settings:'FILL' 1;">verified</span>
-          <div><p class="text-white text-sm font-bold">مؤهل للشهادة ✓</p><p class="text-white/65 text-xs">82% حضور ≥ 75% المطلوبة</p></div>
+          <span class="material-symbols-outlined text-xl" style="color:#89f5e7;font-variation-settings:'FILL' 1;">group</span>
+          <div><p class="text-white text-sm font-bold" id="cd-count">—</p><p class="text-white/65 text-xs">العدد المسجل / السعة القصوى</p></div>
         </div>
       </div>
     </div>
     <!-- Info -->
     <div class="mx-4 mt-4 bg-white rounded-2xl shadow-sm flex-shrink-0">
-      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">person</span><div><p class="text-xs text-on-surface-variant">المدرب</p><p class="text-sm font-bold text-on-surface">م/ محمد فؤاد</p></div></div>
-      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">schedule</span><div><p class="text-xs text-on-surface-variant">الجدول</p><p class="text-sm font-bold text-on-surface">الأحد والثلاثاء — 6:00 م</p></div></div>
-      <div class="p-4 flex items-center gap-3"><span class="material-symbols-outlined text-primary">location_on</span><div><p class="text-xs text-on-surface-variant">المكان</p><p class="text-sm font-bold text-on-surface">قاعة 3، فرع وسط البلد</p></div></div>
+      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">person</span><div><p class="text-xs text-on-surface-variant">المدرب</p><p class="text-sm font-bold text-on-surface" id="cd-instructor">—</p></div></div>
+      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">event</span><div><p class="text-xs text-on-surface-variant">تاريخ البداية</p><p class="text-sm font-bold text-on-surface" id="cd-start">—</p></div></div>
+      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">schedule</span><div><p class="text-xs text-on-surface-variant">الجدول</p><p class="text-sm font-bold text-on-surface" id="cd-schedule">—</p></div></div>
+      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">location_on</span><div><p class="text-xs text-on-surface-variant">المكان</p><p class="text-sm font-bold text-on-surface" id="cd-location">—</p></div></div>
+      <div class="p-4 flex items-start gap-3"><span class="material-symbols-outlined text-primary">description</span><div><p class="text-xs text-on-surface-variant">الوصف</p><p class="text-sm text-on-surface leading-relaxed mt-0.5" id="cd-description">—</p></div></div>
     </div>
     <!-- Actions -->
     <div class="flex flex-col gap-3 mx-4 mt-4 mb-6 flex-shrink-0">
+      <button id="cd-enroll-btn" onclick="enrollCourse(_viewCourseId)" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
+        <span class="material-symbols-outlined text-lg">how_to_reg</span><span>سجّل في الكورس</span>
+      </button>
       <button onclick="push('s-att-log')" class="h-12 bg-surface-container rounded-2xl flex items-center justify-between px-4 tap">
         <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary">fact_check</span><span class="font-semibold text-on-surface text-sm">سجل الحضور التفصيلي</span></div>
         <span class="material-symbols-outlined text-outline">chevron_left</span>
@@ -551,6 +722,10 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
         <div class="flex items-center gap-2"><span class="material-symbols-outlined text-primary" style="font-variation-settings:'FILL' 1;">workspace_premium</span><span class="font-semibold text-primary text-sm">عرض الشهادة المعتمدة</span></div>
         <span class="material-symbols-outlined text-primary">chevron_left</span>
       </button>
+      <a id="cd-instructor-link" href="#" target="_blank" rel="noopener" class="h-12 bg-tertiary/10 rounded-2xl flex items-center justify-between px-4 tap border border-tertiary/20">
+        <div class="flex items-center gap-2"><span class="material-symbols-outlined text-tertiary" style="font-variation-settings:'FILL' 1;">forum</span><span class="font-semibold text-tertiary text-sm">تواصل مع المدرب</span></div>
+        <span class="material-symbols-outlined text-tertiary">chevron_left</span>
+      </a>
     </div>
   </div>
 </div>
@@ -567,13 +742,13 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <button data-f="all" onclick="filterAttLog(this,'all')" class="flex-shrink-0 px-4 py-2 rounded-full bg-primary text-white text-xs font-bold">الكل</button>
       <button data-f="present" onclick="filterAttLog(this,'present')" class="flex-shrink-0 px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant text-xs font-semibold">حاضر ✓</button>
       <button data-f="absent" onclick="filterAttLog(this,'absent')" class="flex-shrink-0 px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant text-xs font-semibold">غائب ✗</button>
-      <button data-f="late" onclick="filterAttLog(this,'late')" class="flex-shrink-0 px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant text-xs font-semibold">متأخر ⏰</button>
+      <button data-f="late" onclick="filterAttLog(this,'late')" class="flex-shrink-0 px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant text-xs font-semibold flex items-center gap-1"><span class="material-symbols-outlined text-sm" aria-hidden="true">schedule</span>متأخر</button>
     </div>
     <!-- Summary row -->
     <div class="flex gap-3 px-4 mb-4 flex-shrink-0">
-      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="font-bold text-lg" style="color:#00554e;">8</p><p class="text-xs text-on-surface-variant">حاضر</p></div>
-      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="font-bold text-lg text-error">1</p><p class="text-xs text-on-surface-variant">غائب</p></div>
-      <div class="flex-1 bg-amber-50 rounded-xl p-3 text-center border border-amber-200"><p class="font-bold text-lg text-amber-700">1</p><p class="text-xs text-on-surface-variant">متأخر</p></div>
+      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="font-bold text-lg" id="sal-present" style="color:#00554e;">0</p><p class="text-xs text-on-surface-variant">حاضر</p></div>
+      <div class="flex-1 rounded-xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="font-bold text-lg text-error" id="sal-absent">0</p><p class="text-xs text-on-surface-variant">غائب</p></div>
+      <div class="flex-1 bg-amber-50 rounded-xl p-3 text-center border border-amber-200"><p class="font-bold text-lg text-amber-700" id="sal-late">0</p><p class="text-xs text-on-surface-variant">متأخر</p></div>
     </div>
     <div id="sal-list" class="flex flex-col gap-2 px-4 pb-6 overflow-y-auto"></div>
   </div>
@@ -634,30 +809,11 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
       <h1 class="text-lg font-bold text-on-surface">لوحة الصدارة</h1>
     </div>
-    <!-- Podium -->
+    <!-- Podium (dynamic) -->
     <div class="mx-4 mb-4 rounded-3xl overflow-hidden shadow-lg flex-shrink-0" style="background:linear-gradient(135deg,#00288e,#1e40af);">
       <div class="p-5">
         <p class="text-center text-white/65 text-xs font-bold uppercase tracking-wider mb-5">أفضل الطلاب هذا الشهر</p>
-        <div class="flex items-end justify-center gap-3">
-          <div class="flex flex-col items-center gap-2 flex-1">
-            <div class="w-14 h-14 rounded-full bg-white/25 flex items-center justify-center text-xl font-bold text-white border-2 border-white/30">سا</div>
-            <p class="text-white text-xs font-bold text-center">سارة أحمد</p>
-            <p class="text-white/65 text-xs">310 ⭐</p>
-            <div class="w-full h-14 bg-white/20 rounded-xl flex items-center justify-center text-xl">🥈</div>
-          </div>
-          <div class="flex flex-col items-center gap-2 flex-1">
-            <div class="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white border-2 border-amber-300 shadow-lg" style="background:rgba(251,191,36,0.5);">مص</div>
-            <p class="text-white text-xs font-bold text-center">مصطفى علي</p>
-            <p class="text-white/65 text-xs">420 ⭐</p>
-            <div class="w-full h-24 bg-white/25 rounded-xl flex items-center justify-center text-2xl">🥇</div>
-          </div>
-          <div class="flex flex-col items-center gap-2 flex-1">
-            <div class="w-14 h-14 rounded-full bg-white/25 flex items-center justify-center text-xl font-bold text-white border-2 border-white/30">من</div>
-            <p class="text-white text-xs font-bold text-center">منة الله</p>
-            <p class="text-white/65 text-xs">285 ⭐</p>
-            <div class="w-full h-10 bg-white/20 rounded-xl flex items-center justify-center text-lg">🥉</div>
-          </div>
-        </div>
+        <div class="flex items-end justify-center gap-3" id="sl-podium"></div>
       </div>
     </div>
     <div id="sl-list" class="flex flex-col gap-2 px-4 overflow-y-auto pb-24"></div>
@@ -665,10 +821,10 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     <div class="flex-shrink-0 absolute bottom-0 left-0 right-0 px-4 pb-6 pt-4" style="background:linear-gradient(to top, #f7f9fb 70%, transparent);">
       <div class="bg-primary rounded-2xl p-4 flex items-center justify-between shadow-lg">
         <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-white text-sm">#4</div>
-          <div><p class="text-white font-bold text-sm">أحمد محمد (أنت)</p><p class="text-white/65 text-xs">240 نقطة</p></div>
+          <div class="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-white text-sm" id="sl-my-rank">#4</div>
+          <div><p class="text-white font-bold text-sm" id="sl-my-name">أحمد محمد (أنت)</p><p class="text-white/65 text-xs" id="sl-my-pts">240 نقطة</p></div>
         </div>
-        <div class="flex items-center gap-1" style="color:#89f5e7;"><span class="material-symbols-outlined text-base">arrow_upward</span><span class="text-xs font-bold">+2 مرتبة</span></div>
+        <div class="flex items-center gap-1" style="color:#89f5e7;"><span class="material-symbols-outlined text-base">arrow_upward</span><span class="text-xs font-bold" id="sl-my-delta">+2 مرتبة</span></div>
       </div>
     </div>
   </div>
@@ -684,18 +840,8 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   </div>
   <div class="scr-body p-4 flex flex-col gap-4">
     <div id="scerts-list" class="flex flex-col gap-4"></div>
-    <!-- Pending -->
-    <div class="bg-amber-50 rounded-2xl p-4 border border-amber-200">
-      <div class="flex items-start gap-3">
-        <span class="material-symbols-outlined text-amber-600">info</span>
-        <div class="flex-1">
-          <p class="text-sm font-bold text-on-surface">أساسيات برمجة الويب</p>
-          <p class="text-xs text-on-surface-variant mt-0.5">حضور: 60% — المطلوب: 75% لإصدار الشهادة</p>
-          <div class="h-1.5 bg-amber-200 rounded-full mt-2"><div class="h-full bg-amber-500 rounded-full" style="width:60%;"></div></div>
-          <p class="text-xs text-amber-700 font-semibold mt-1.5">تحتاج 2 محاضرات إضافية</p>
-        </div>
-      </div>
-    </div>
+    <!-- Pending (dynamic) -->
+    <div id="scerts-pending"></div>
   </div>
 </div>
 
@@ -761,10 +907,10 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       </div>
     </div>
     <div class="flex gap-3 mx-4 mt-4 mb-8 flex-shrink-0">
-      <button onclick="showToast('جاري تحميل الشهادة PDF...')" class="flex-1 h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
+      <button onclick="exportPdf()" class="flex-1 h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
         <span class="material-symbols-outlined text-lg">download</span><span>تحميل PDF</span>
       </button>
-      <button onclick="showToast('تم نسخ رابط التحقق!')" class="flex-1 h-12 bg-surface-container text-on-surface font-bold text-sm rounded-2xl flex items-center justify-center gap-2 tap">
+      <button onclick="shareCert()" class="flex-1 h-12 bg-surface-container text-on-surface font-bold text-sm rounded-2xl flex items-center justify-center gap-2 tap">
         <span class="material-symbols-outlined text-lg">share</span><span>مشاركة</span>
       </button>
     </div>
@@ -782,27 +928,27 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   <div class="scr-body p-0 flex flex-col gap-0">
     <div class="flex flex-col items-center py-6 px-4 anim-fiu">
       <div class="relative">
-        <div class="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg" style="background:linear-gradient(135deg,#00288e,#1e40af);">أح</div>
+        <div class="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg" style="background:linear-gradient(135deg,#00288e,#1e40af);" id="pf-avatar">أح</div>
         <div class="absolute bottom-1 right-1 w-6 h-6 bg-tertiary-container rounded-full border-2 border-white flex items-center justify-center">
           <span class="material-symbols-outlined text-white" style="font-size:12px;">check</span>
         </div>
       </div>
-      <h2 class="text-xl font-bold text-on-surface mt-3">أحمد محمد عبد الله</h2>
-      <p class="text-on-surface-variant text-sm">فرع وسط البلد</p>
+      <h2 class="text-xl font-bold text-on-surface mt-3" id="pf-name">أحمد محمد عبد الله</h2>
+      <p class="text-on-surface-variant text-sm" id="pf-branch">فرع وسط البلد</p>
       <div class="flex items-center gap-1.5 mt-2"><div class="w-2 h-2 rounded-full" style="background:#00554e;"></div><span class="text-xs font-semibold" style="color:#00554e;">طالب نشط</span></div>
     </div>
     <!-- Stats -->
     <div class="flex border-t border-b border-outline-variant/40 bg-surface-container/50">
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">2</p><p class="text-xs text-on-surface-variant mt-0.5">كورسات</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="sp-courses">0</p><p class="text-xs text-on-surface-variant mt-0.5">كورسات</p></div>
       <div class="w-px bg-outline-variant/40"></div>
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">240</p><p class="text-xs text-on-surface-variant mt-0.5">نقطة</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="sp-points">0</p><p class="text-xs text-on-surface-variant mt-0.5">نقطة</p></div>
       <div class="w-px bg-outline-variant/40"></div>
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">4</p><p class="text-xs text-on-surface-variant mt-0.5">شارة</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="sp-badges-count">0</p><p class="text-xs text-on-surface-variant mt-0.5">شارة</p></div>
     </div>
     <!-- Info -->
     <div class="mx-4 mt-4 bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">phone</span><div><p class="text-xs text-on-surface-variant">رقم الموبايل</p><p class="text-sm font-bold text-on-surface">01012345678</p></div></div>
-      <div class="p-4 flex items-center gap-3"><span class="material-symbols-outlined text-primary">location_on</span><div><p class="text-xs text-on-surface-variant">الفرع</p><p class="text-sm font-bold text-on-surface">وسط البلد — القاهرة</p></div></div>
+      <div class="p-4 border-b border-outline-variant/30 flex items-center gap-3"><span class="material-symbols-outlined text-primary">phone</span><div><p class="text-xs text-on-surface-variant">رقم الموبايل</p><p class="text-sm font-bold text-on-surface" id="pf-phone">01012345678</p></div></div>
+      <div class="p-4 flex items-center gap-3"><span class="material-symbols-outlined text-primary">location_on</span><div><p class="text-xs text-on-surface-variant">الفرع</p><p class="text-sm font-bold text-on-surface" id="pf-branch-detail">وسط البلد — القاهرة</p></div></div>
     </div>
     <!-- Settings -->
     <div class="mx-4 mt-4">
@@ -810,11 +956,11 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30">
           <div class="flex items-center gap-3"><span class="material-symbols-outlined text-on-surface-variant">notifications</span><span class="text-sm font-medium text-on-surface">الإشعارات</span></div>
-          <div class="toggle-track on" id="tog-notif" onclick="toggleSwitch('tog-notif')"><div class="toggle-thumb"></div></div>
+          <div class="toggle-track on" id="tog-notif" role="switch" aria-checked="true" aria-label="الإشعارات" onclick="toggleSwitch('tog-notif')"><div class="toggle-thumb"></div></div>
         </div>
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30">
           <div class="flex items-center gap-3"><span class="material-symbols-outlined text-on-surface-variant">dark_mode</span><span class="text-sm font-medium text-on-surface">الوضع الليلي</span></div>
-          <div class="toggle-track off" id="tog-dark" onclick="toggleDarkMode()"><div class="toggle-thumb"></div></div>
+          <div class="toggle-track off" id="tog-dark" role="switch" aria-checked="false" aria-label="الوضع الليلي" onclick="toggleDarkMode()"><div class="toggle-thumb"></div></div>
         </div>
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30">
           <div class="flex items-center gap-3"><span class="material-symbols-outlined text-on-surface-variant">language</span><span class="text-sm font-medium text-on-surface">اللغة</span></div>
@@ -952,14 +1098,14 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   </div>
   <div class="scr-body p-4 flex flex-col gap-4">
     <div class="grid grid-cols-3 gap-3 anim-fiu">
-      <div class="bg-white rounded-2xl p-3 text-center shadow-sm"><p class="text-2xl font-bold text-on-surface">40</p><p class="text-xs text-on-surface-variant mt-1">طلابي</p></div>
-      <div class="rounded-2xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="text-2xl font-bold" style="color:#00554e;">22</p><p class="text-xs text-on-surface-variant mt-1">حضروا</p></div>
-      <div class="rounded-2xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="text-2xl font-bold text-error">3</p><p class="text-xs text-on-surface-variant mt-1">غائبون</p></div>
+      <div class="bg-white rounded-2xl p-3 text-center shadow-sm"><p class="text-2xl font-bold text-on-surface" id="vh-mine">0</p><p class="text-xs text-on-surface-variant mt-1">طلابي</p></div>
+      <div class="rounded-2xl p-3 text-center border" style="background:rgba(0,85,78,0.1);border-color:rgba(0,85,78,0.2);"><p class="text-2xl font-bold" id="vh-present" style="color:#00554e;">0</p><p class="text-xs text-on-surface-variant mt-1">حضروا</p></div>
+      <div class="rounded-2xl p-3 text-center border" style="background:rgba(186,26,26,0.08);border-color:rgba(186,26,26,0.15);"><p class="text-2xl font-bold text-error" id="vh-absent">0</p><p class="text-xs text-on-surface-variant mt-1">غائبون</p></div>
     </div>
     <!-- Absence alert -->
-    <div class="bg-amber-50 rounded-2xl p-4 border border-amber-200 flex items-start gap-3 anim-fiu" style="animation-delay:0.1s;">
+    <div id="vh-absence" class="bg-amber-50 rounded-2xl p-4 border border-amber-200 flex items-start gap-3 anim-fiu" style="animation-delay:0.1s;">
       <span class="material-symbols-outlined text-amber-600">warning</span>
-      <div><p class="text-sm font-bold text-on-surface">تنبيه غياب متكرر</p><p class="text-xs text-on-surface-variant mt-0.5">مصطفى سمير — غاب 5 مرات · دفعة A إنجليزي</p><button onclick="showToast('تم إرسال تنبيه للطالب ✓')" class="text-xs text-amber-700 font-bold mt-2">تواصل معه ←</button></div>
+      <div><p class="text-sm font-bold text-on-surface">تنبيه غياب متكرر</p><p class="text-xs text-on-surface-variant mt-0.5" id="vh-absence-name">مصطفى سمير — غاب 5 مرات · دفعة A إنجليزي</p><a id="vh-absence-link" href="#" target="_blank" rel="noopener" class="text-xs text-amber-700 font-bold mt-2 inline-block">تواصل معه ←</a></div>
     </div>
     <!-- Batches today -->
     <div class="anim-fiu" style="animation-delay:0.15s;">
@@ -1020,7 +1166,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   <div class="scr-body p-0">
     <div id="va-students" class="flex flex-col divide-y divide-outline-variant/30"></div>
     <div class="px-4 py-3 sticky bottom-0 bg-surface/90 backdrop-blur-sm border-t border-outline-variant/30">
-      <button onclick="saveAttendance()" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
+      <button onclick="saveAttendance(this)" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
         <span class="material-symbols-outlined">lock</span><span>إغلاق المحاضرة وحفظ الحضور</span>
       </button>
     </div>
@@ -1030,7 +1176,12 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
 <!-- V-BATCHES -->
 <div id="screen-v-batches" class="screen">
   <div class="glass-header">
-    <div class="h-16 flex items-center px-4 pt-safe"><h1 class="text-lg font-bold text-on-surface">الدفعات والطلاب</h1></div>
+    <div class="h-16 flex items-center justify-between px-4 pt-safe">
+      <h1 class="text-lg font-bold text-on-surface">الدفعات والطلاب</h1>
+      <button onclick="openAddBatchModal()" class="flex items-center gap-1 bg-primary rounded-full px-3 py-1.5 tap">
+        <span class="material-symbols-outlined text-white text-base">add</span><span class="text-white text-xs font-bold">إنشاء دفعة</span>
+      </button>
+    </div>
   </div>
   <div class="scr-body p-4">
     <div id="vb-list" class="flex flex-col gap-4"></div>
@@ -1045,10 +1196,10 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <h1 class="text-lg font-bold text-on-surface">تقرير المحاضرة</h1>
     </div>
     <div class="mx-4 flex-1 overflow-y-auto pb-6 flex flex-col gap-4">
-      <div class="bg-white rounded-2xl shadow-sm p-4">
+      <div class="bg-white rounded-2xl shadow-sm p-4" id="vrep-header">
         <div class="flex items-center gap-3">
           <div class="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center"><span class="material-symbols-outlined text-primary">translate</span></div>
-          <div><p class="font-bold text-on-surface text-sm">دفعة A — إنجليزي</p><p class="text-xs text-on-surface-variant">المحاضرة 11 · الأحد 11 أغسطس 2026</p></div>
+          <div><p class="font-bold text-on-surface text-sm" id="vrep-batch-name">دفعة A — إنجليزي</p><p class="text-xs text-on-surface-variant" id="vrep-meta">المحاضرة 11 · الأحد 11 أغسطس 2026</p></div>
         </div>
       </div>
       <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-4">
@@ -1120,17 +1271,17 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   </div>
   <div class="scr-body p-0 flex flex-col">
     <div class="flex flex-col items-center py-6 px-4">
-      <div class="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg" style="background:linear-gradient(135deg,#003c36,#00554e);">مح</div>
-      <h2 class="text-xl font-bold text-on-surface mt-3">م/ محمد فؤاد</h2>
-      <p class="text-on-surface-variant text-sm">مدرب إنجليزي وبرمجة ويب</p>
-      <p class="text-xs font-semibold mt-1 text-primary">فرع وسط البلد</p>
+      <div class="w-24 h-24 rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg" style="background:linear-gradient(135deg,#003c36,#00554e);" id="vp-avatar">مح</div>
+      <h2 class="text-xl font-bold text-on-surface mt-3" id="vp-name">م/ محمد فؤاد</h2>
+      <p class="text-on-surface-variant text-sm" id="vp-branch">فرع وسط البلد</p>
+      <p class="text-xs font-semibold mt-1 text-tertiary">متطوع / مدرب</p>
     </div>
     <div class="flex border-t border-b border-outline-variant/40 bg-surface-container/50">
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">2</p><p class="text-xs text-on-surface-variant">دفعات</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="vp-batches">0</p><p class="text-xs text-on-surface-variant">دفعات</p></div>
       <div class="w-px bg-outline-variant/40"></div>
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">40</p><p class="text-xs text-on-surface-variant">طلاب</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="vp-students">0</p><p class="text-xs text-on-surface-variant">طلاب</p></div>
       <div class="w-px bg-outline-variant/40"></div>
-      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface">25</p><p class="text-xs text-on-surface-variant">محاضرة</p></div>
+      <div class="flex-1 py-4 text-center"><p class="text-xl font-bold text-on-surface" id="vp-lectures">0</p><p class="text-xs text-on-surface-variant">محاضرة</p></div>
     </div>
     <div class="mx-4 mt-4 mb-6">
       <button onclick="handleLogout()" class="w-full h-12 rounded-2xl flex items-center justify-center gap-2 tap border border-error/20" style="background:rgba(186,26,26,0.08);">
@@ -1162,6 +1313,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
       <div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex items-start justify-between"><div><p class="text-3xl font-bold text-on-surface" id="kpi-c">4</p><p class="text-xs text-on-surface-variant mt-0.5">الكورسات</p></div><div class="w-10 h-10 rounded-xl bg-tertiary/10 flex items-center justify-center"><span class="material-symbols-outlined text-tertiary">menu_book</span></div></div></div>
       <div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex items-start justify-between"><div><p class="text-3xl font-bold text-on-surface" id="kpi-b">3</p><p class="text-xs text-on-surface-variant mt-0.5">الدفعات</p></div><div class="w-10 h-10 rounded-xl bg-secondary-container flex items-center justify-center"><span class="material-symbols-outlined text-secondary">groups</span></div></div></div>
       <div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex items-start justify-between"><div><p class="text-3xl font-bold text-on-surface" id="kpi-cert">2</p><p class="text-xs text-on-surface-variant mt-0.5">الشهادات</p></div><div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center"><span class="material-symbols-outlined text-amber-700">workspace_premium</span></div></div></div>
+      <div class="bg-white rounded-2xl p-4 shadow-sm"><div class="flex items-start justify-between"><div><p class="text-3xl font-bold text-on-surface" id="kpi-att">0%</p><p class="text-xs text-on-surface-variant mt-0.5">نسبة الحضور</p></div><div class="w-10 h-10 rounded-xl bg-tertiary-container/20 flex items-center justify-center"><span class="material-symbols-outlined text-tertiary">fact_check</span></div></div><p class="text-xs font-semibold mt-2" style="color:#00554e;">حضور فعلي مسجّل</p></div>
     </div>
     <!-- Chart -->
     <div class="bg-white rounded-2xl p-4 shadow-sm anim-fiu" style="animation-delay:0.1s;">
@@ -1249,7 +1401,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
   <div class="scr-body p-4">
     <div id="acerts-pane" class="flex flex-col gap-3">
       <div id="acerts-list" class="flex flex-col gap-3"></div>
-      <button onclick="showToast('تم إصدار الشهادات للمستوفين تلقائياً ✓')" class="w-full h-12 text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap" style="background:#854d0e;">
+      <button onclick="issueCertsForEligible()" class="w-full h-12 text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap" style="background:#854d0e;">
         <span class="material-symbols-outlined">workspace_premium</span><span>إصدار للمستوفين الشرط</span>
       </button>
     </div>
@@ -1329,7 +1481,7 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
         <label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">نص الرسالة</label>
         <textarea id="ab-body" rows="4" placeholder="اكتب نص التنبيه..." class="inp mt-1.5" style="height:auto;padding:14px 16px;resize:none;"></textarea>
       </div>
-      <button onclick="sendBroadcast()" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
+      <button onclick="sendBroadcast(this)" class="w-full h-12 bg-primary text-white font-bold text-sm rounded-2xl flex items-center justify-center gap-2 shadow-lg tap">
         <span class="material-symbols-outlined">notifications_active</span><span>إرسال التنبيه</span>
       </button>
     </div>
@@ -1346,8 +1498,8 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
     <div>
       <p class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-2.5">إعدادات النظام</p>
       <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div class="flex items-center justify-between p-4 border-b border-outline-variant/30"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">backup</span><span class="text-sm font-medium text-on-surface">نسخ احتياطي تلقائي</span></div><div class="toggle-track on" id="tog-backup" onclick="toggleSwitch('tog-backup')"><div class="toggle-thumb"></div></div></div>
-        <div class="flex items-center justify-between p-4 border-b border-outline-variant/30"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">dark_mode</span><span class="text-sm font-medium text-on-surface">الوضع الليلي</span></div><div class="toggle-track off" id="tog-backup-dark" onclick="toggleDarkMode()"><div class="toggle-thumb"></div></div></div>
+        <div class="flex items-center justify-between p-4 border-b border-outline-variant/30"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">backup</span><span class="text-sm font-medium text-on-surface">نسخ احتياطي تلقائي</span></div><div class="toggle-track on" id="tog-backup" role="switch" aria-checked="true" aria-label="نسخ احتياطي تلقائي" onclick="toggleSwitch('tog-backup')"><div class="toggle-thumb"></div></div></div>
+        <div class="flex items-center justify-between p-4 border-b border-outline-variant/30"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">dark_mode</span><span class="text-sm font-medium text-on-surface">الوضع الليلي</span></div><div class="toggle-track off" id="tog-backup-dark" role="switch" aria-checked="false" aria-label="الوضع الليلي" onclick="toggleDarkMode()"><div class="toggle-thumb"></div></div></div>
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30 tap" onclick="showToast('سياسة الخصوصية')"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">policy</span><span class="text-sm font-medium text-on-surface">سياسة الخصوصية</span></div><span class="material-symbols-outlined text-outline">chevron_left</span></div>
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30 tap" onclick="switchTab('a-branches')"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">location_city</span><span class="text-sm font-medium text-on-surface">إدارة الفروع</span></div><span class="material-symbols-outlined text-outline">chevron_left</span></div>
         <div class="flex items-center justify-between p-4 border-b border-outline-variant/30 tap" onclick="switchTab('a-export')"><div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">bar_chart</span><span class="text-sm font-medium text-on-surface">التقارير والتصدير</span></div><span class="material-symbols-outlined text-outline">chevron_left</span></div>
@@ -1422,25 +1574,60 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
 <div class="modal-bg" id="add-user-modal" onclick="closeModal('add-user-modal',event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="text-lg font-bold text-on-surface mb-5">➕ إضافة مستخدم جديد</h3>
+    <h3 class="text-lg font-bold text-on-surface mb-5 flex items-center gap-2"><span class="material-symbols-outlined text-xl text-primary">person_add</span> إضافة مستخدم جديد</h3>
     <form onsubmit="submitAddUser(event)" class="flex flex-col gap-4">
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الاسم بالكامل</label><input id="nu-name" required type="text" placeholder="مثال: أحمد محمد علي" class="inp mt-1.5"></div>
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">رقم الموبايل</label><input id="nu-phone" required type="tel" dir="ltr" placeholder="01XXXXXXXXX" class="inp mt-1.5"></div>
-      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الدور</label><select id="nu-role" class="inp mt-1.5"><option value="student">🎓 طالب / مستفيد</option><option value="volunteer">🤝 متطوع / مدرب</option><option value="admin">⚙️ مشرف / أدمن</option></select></div>
-      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1">💾 حفظ المستخدم</button>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الدور</label><select id="nu-role" class="inp mt-1.5"><option value="student">طالب / مستفيد</option><option value="volunteer">متطوع / مدرب</option><option value="admin">مشرف / أدمن</option></select></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الفرع</label><select id="nu-branch" class="inp mt-1.5"></select></div>
+      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1">حفظ المستخدم</button>
     </form>
+  </div>
+</div>
+
+<div class="modal-bg" id="add-batch-modal" onclick="closeModal('add-batch-modal',event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="text-lg font-bold text-on-surface mb-5 flex items-center gap-2"><span class="material-symbols-outlined text-xl text-primary">groups</span> إنشاء دفعة جديدة</h3>
+    <form onsubmit="submitAddBatch(event)" class="flex flex-col gap-4">
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الكورس</label><select id="nb-b-course" class="inp mt-1.5"></select></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">اسم الدفعة</label><input id="nb-b-name" required type="text" placeholder="مثال: دفعة C — إنجليزي" class="inp mt-1.5"></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الجدول</label><input id="nb-b-schedule" type="text" placeholder="مثال: الأحد والثلاثاء 6م" class="inp mt-1.5"></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">المكان</label><input id="nb-b-location" type="text" placeholder="مثال: قاعة 3، وسط البلد" class="inp mt-1.5"></div>
+      <div>
+        <label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الطلاب</label>
+        <div id="nb-b-students" class="flex flex-col gap-2 mt-1.5 max-h-48 overflow-y-auto"></div>
+      </div>
+      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1">حفظ الدفعة</button>
+    </form>
+  </div>
+</div>
+
+<div class="modal-bg" id="course-batches-modal" onclick="closeModal('course-batches-modal',event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <h3 class="text-lg font-bold text-on-surface mb-4" id="cbm-title">دفعات الكورس</h3>
+    <div id="cbm-list" class="flex flex-col gap-3"></div>
   </div>
 </div>
 
 <div class="modal-bg" id="add-course-modal" onclick="closeModal('add-course-modal',event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="text-lg font-bold text-on-surface mb-5">📚 إنشاء كورس جديد</h3>
+    <h3 class="text-lg font-bold text-on-surface mb-5 flex items-center gap-2"><span class="material-symbols-outlined text-xl text-primary">menu_book</span> إنشاء كورس جديد</h3>
     <form onsubmit="submitAddCourse(event)" class="flex flex-col gap-4">
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">اسم الكورس</label><input id="nc-title" required type="text" placeholder="مثال: مهارات ريادة الأعمال" class="inp mt-1.5"></div>
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الفئة</label><input id="nc-cat" type="text" placeholder="تنمية بشرية / برمجة / لغات" class="inp mt-1.5"></div>
-      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">عدد المحاضرات</label><input id="nc-sessions" type="text" value="8 محاضرات" class="inp mt-1.5"></div>
-      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1">🚀 إنشاء الكورس</button>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">عدد المحاضرات</label><input id="nc-sessions" type="number" min="1" value="8" class="inp mt-1.5" dir="ltr" style="text-align:left;"></div>
+        <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">تاريخ البداية</label><input id="nc-start" type="date" value="2026-08-10" class="inp mt-1.5" dir="ltr"></div>
+      </div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الجدول (مثال: الأحد والثلاثاء 6م)</label><input id="nc-schedule" type="text" placeholder="الأحد والثلاثاء 6م" class="inp mt-1.5"></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">المكان / القاعة</label><input id="nc-location" type="text" placeholder="قاعة 3، وسط البلد" class="inp mt-1.5"></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">المدرب</label><select id="nc-instructor" class="inp mt-1.5"><option value="">— اختر المدرب —</option></select></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">الحد الأقصى للطلاب</label><input id="nc-max" type="number" min="1" value="30" class="inp mt-1.5" dir="ltr" style="text-align:left;"></div>
+      <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">وصف الكورس</label><textarea id="nc-desc" rows="3" placeholder="اكتب وصفاً مختصراً للكورس..." class="inp mt-1.5" style="height:auto;padding:14px 16px;resize:none;"></textarea></div>
+      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1 flex items-center justify-center gap-2"><span class="material-symbols-outlined text-lg">add_circle</span> إنشاء الكورس</button>
     </form>
   </div>
 </div>
@@ -1448,12 +1635,12 @@ html[data-theme="dark"] .toggle-track.off{background:#2a3548;}
 <div class="modal-bg" id="add-branch-modal" onclick="closeModal('add-branch-modal',event)">
   <div class="modal-sheet" onclick="event.stopPropagation()">
     <div class="modal-handle"></div>
-    <h3 class="text-lg font-bold text-on-surface mb-5">🏢 إضافة فرع جديد</h3>
+    <h3 class="text-lg font-bold text-on-surface mb-5 flex items-center gap-2"><span class="material-symbols-outlined text-xl text-primary">account_balance</span> إضافة فرع جديد</h3>
     <form onsubmit="submitAddBranch(event)" class="flex flex-col gap-4">
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">اسم الفرع</label><input id="nb-name" required type="text" placeholder="مثال: فرع مدينة نصر" class="inp mt-1.5"></div>
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">العنوان</label><input id="nb-address" type="text" placeholder="الشارع، المنطقة، المدينة" class="inp mt-1.5"></div>
       <div><label class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">عدد القاعات</label><input id="nb-halls" type="number" value="1" min="1" class="inp mt-1.5" dir="ltr" style="text-align:left;"></div>
-      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1">💾 حفظ الفرع</button>
+      <button type="submit" class="w-full h-12 bg-primary text-white font-bold rounded-2xl shadow-lg tap text-sm mt-1 flex items-center justify-center gap-2"><span class="material-symbols-outlined text-lg">check</span> حفظ الفرع</button>
     </form>
   </div>
 </div>
