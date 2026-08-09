@@ -1,0 +1,20 @@
+# ═══════════════════════════════════════════
+#  RTC-app — Git Attributes
+# ═══════════════════════════════════════════
+
+# Normalize line endings (LF in repo, platform default on checkout)
+* text=auto
+
+# Text files
+*.html text
+*.js text
+*.css text
+*.json text
+*.md text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.pptx binary

@@ -1,0 +1,26 @@
+{
+  "name": "مسار RTC - جمعية رسالة التدريبي",
+  "short_name": "مسار RTC",
+  "description": "نظام متابعة مستفيدي الكورسات المجانية — مركز رسالة التدريبي",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#00288e",
+  "theme_color": "#00288e",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "scope": "./",
+  "categories": ["education", "productivity"],
+  "lang": "ar",
+  "dir": "rtl"
+}

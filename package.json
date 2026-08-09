@@ -1,0 +1,34 @@
+{
+  "name": "rtc-app",
+  "version": "2.0.0",
+  "description": "RTC - نظام متابعة مستفيدي الكورسات المجانية",
+  "main": "index.html",
+  "scripts": {
+    "dev": "npx serve -l 5173",
+    "cap:add": "npx cap add android && npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "build:android": "npx cap sync && npx cap run android",
+    "build:ios": "npx cap sync && npx cap run ios",
+    "icons": "node generate-icons.js"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0",
+    "serve": "^14.2.0",
+    "sharp": "^0.33.0"
+  },
+  "dependencies": {
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/network": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@capacitor/share": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
+  }
+}
