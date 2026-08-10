@@ -249,10 +249,13 @@
 
   const ROLE_PREFIX = { student: 's-', volunteer: 'v-', admin: 'a-' };
   const PUBLIC = ['login', 'otp', 'splash'];
+  // Shared screens reachable by any logged-in role (not role-prefixed).
+  const SHARED_ROLE_SCREENS = ['guide', 'support'];
 
   function canAccess(id) {
     if (PUBLIC.indexOf(id) !== -1) return true;
     if (!currentRole) return false;
+    if (SHARED_ROLE_SCREENS.indexOf(id) !== -1) return true;
     return id.indexOf(ROLE_PREFIX[currentRole]) === 0;
   }
 
@@ -375,6 +378,8 @@
     const nv = document.getElementById('nav-volunteer');
     const na = document.getElementById('nav-admin');
     [ns, nv, na].forEach(n => n && n.classList.add('hidden'));
+    // Guide is a clean full-screen intro — no bottom nav, regardless of role.
+    if (id === 'guide') return;
     if (!currentRole) return;
     if (currentRole === 'student' && ns) ns.classList.remove('hidden');
     else if (currentRole === 'volunteer' && nv) nv.classList.remove('hidden');
@@ -687,6 +692,10 @@
       case 'a-broadcast':     renderBroadcast();         break;
       case 'a-settings':      renderAdminSettings();     break;
       case 'a-notifications': renderAdminNotifs();       break;
+      case 'guide':           renderGuide();             break;
+      case 'support':         renderSupport();           break;
+      case 's-edit-profile':  renderEditProfile();       break;
+      case 'v-edit-profile':  renderVolEditProfile();    break;
     }
   }
 
@@ -1278,6 +1287,92 @@
     const lctEl = document.getElementById('vp-lectures');
     if (lctEl) lctEl.textContent = totalLectures;
   }
+
+  /* ── PROFILE EDIT (student + volunteer) */
+  const AVATAR_CHOICES = ['أح', 'سا', 'مص', 'من', 'يو', 'نو', 'رك', 'لي', 'ها', 'رم'];
+  const AVATAR_PALETTE = ['#00288e', '#1e40af', '#003c36', '#00554e', '#515f74', '#854d0e', '#7b1fa2', '#b45309', '#9d174d', '#0f766e'];
+  const PROFILE_NAME_RE = /^[؀-ۿݐ-ݿa-zA-Z\s/.-]{2,60}$/;
+  let pendingAvatar = '';
+
+  function renderAvatarPicker(listId, currentAvatar) {
+    const el = document.getElementById(listId);
+    if (!el) return;
+    pendingAvatar = currentAvatar || AVATAR_CHOICES[0];
+    el.innerHTML = AVATAR_CHOICES.map((a, i) =>
+      `<button type="button" class="avatar-opt ${a === pendingAvatar ? 'sel' : ''}" style="background:${AVATAR_PALETTE[i % AVATAR_PALETTE.length]};" data-av="${a}" onclick="pickAvatar(this,'${a}')" aria-pressed="${a === pendingAvatar}" aria-label="اختيار الصورة الرمزية ${a}">${a}</button>`).join('');
+  }
+  window.pickAvatar = function (btn, a) {
+    haptic(5);
+    pendingAvatar = a;
+    const wrap = btn.closest('div');
+    if (wrap) {
+      wrap.querySelectorAll('.avatar-opt').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('sel', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+    }
+  };
+
+  function renderEditProfile() {
+    const me = currentStudent();
+    if (!me) return;
+    const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+    setVal('se-name', me.name || '');
+    setVal('se-phone', me.phone || '');
+    setVal('se-branch', me.branch || 'وسط البلد');
+    renderAvatarPicker('se-avatars', me.avatar || 'أح');
+  }
+  window.saveProfileEdit = function () {
+    const me = currentStudent();
+    if (!me) return;
+    const nameEl = document.getElementById('se-name');
+    const phoneEl = document.getElementById('se-phone');
+    const name = (nameEl.value || '').trim();
+    const phone = (phoneEl.value || '').trim();
+    const branch = (document.getElementById('se-branch').value || '').trim();
+    if (!PROFILE_NAME_RE.test(name)) { fieldError(nameEl, 'اكتب الاسم بالكامل (حروف فقط، 2-60 حرف)'); return; }
+    if (!PHONE_RE.test(phone)) { fieldError(phoneEl, 'رقم موبايل مصري صحيح (11 رقماً يبدأ بـ 01)'); return; }
+    fieldError(nameEl, ''); fieldError(phoneEl, '');
+    me.name = name; me.phone = phone; me.branch = branch;
+    me.avatar = pendingAvatar || (name[0] + (name[1] || ''));
+    store.auditLog.unshift({ icon: 'edit', text: 'تحديث الملف الشخصي (طالب): ' + name, time: 'الآن', color: '#00288e' });
+    save();
+    showToast('تم حفظ تعديلات ملفك', 'success');
+    hapticPattern('success');
+    setTimeout(() => pop(), 600);
+  };
+
+  function renderVolEditProfile() {
+    const v = currentVolunteer();
+    if (!v) return;
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    setVal('ve-name', v.name || '');
+    setVal('ve-phone', v.phone || '');
+    setVal('ve-branch', v.branch || 'وسط البلد');
+    renderAvatarPicker('ve-avatars', v.avatar || 'مح');
+  }
+  window.saveVolProfileEdit = function () {
+    const v = currentVolunteer();
+    if (!v) return;
+    const nameEl = document.getElementById('ve-name');
+    const phoneEl = document.getElementById('ve-phone');
+    const name = (nameEl.value || '').trim();
+    const phone = (phoneEl.value || '').trim();
+    const branch = (document.getElementById('ve-branch').value || '').trim();
+    if (!PROFILE_NAME_RE.test(name)) { fieldError(nameEl, 'اكتب الاسم بالكامل (حروف فقط، 2-60 حرف)'); return; }
+    if (!PHONE_RE.test(phone)) { fieldError(phoneEl, 'رقم موبايل مصري صحيح (11 رقماً يبدأ بـ 01)'); return; }
+    fieldError(nameEl, ''); fieldError(phoneEl, '');
+    v.name = name; v.phone = phone; v.branch = branch;
+    v.avatar = pendingAvatar || (name[0] + (name[1] || ''));
+    // Batches taught by this volunteer keep their instructor name in sync
+    store.batches.forEach(b => { if (b.instructor === v.name || !b.instructor) b.instructor = name; });
+    store.auditLog.unshift({ icon: 'edit', text: 'تحديث الملف الشخصي (متطوع): ' + name, time: 'الآن', color: '#00554e' });
+    save();
+    showToast('تم حفظ تعديلات ملفك', 'success');
+    hapticPattern('success');
+    setTimeout(() => pop(), 600);
+  };
 
   /* ── VOLUNTEER ATTENDANCE */
   function renderVolAttendance() {
@@ -2033,6 +2128,12 @@
     currentRole = role;
     localStorage.setItem('rtc_role_v2', role);
     const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
+    // First-run: route through the guide (3-slide intro + role + consent) before home
+    if (!onboardingDone()) {
+      navigate('guide');
+      showToast('مرحباً! اطّلع على دليل التطبيق', 'info');
+      return;
+    }
     navigate(homes[role]);
     showToast('مرحباً! تم تسجيل الدخول كـ ' + { student: 'طالب', volunteer: 'متطوع', admin: 'مشرف' }[role], 'success');
     save();
@@ -2077,6 +2178,12 @@
     if (VALID_ROLES.indexOf(currentRole) === -1) currentRole = 'student';
     localStorage.setItem('rtc_role_v2', currentRole);
     const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
+    // First-run: guide explains the app before entering the portal (role stays as chosen)
+    if (!onboardingDone()) {
+      navigate('guide');
+      showToast('تم التحقق بنجاح!', 'success');
+      return;
+    }
     navigate(homes[currentRole] || 's-home');
     showToast('تم التحقق بنجاح!', 'success');
   };
@@ -2087,6 +2194,220 @@
     navStack = [];
     navigate('login');
     showToast('تم تسجيل الخروج', 'info');
+  };
+
+  // ═══════════════════════════════════════════════
+  // ONBOARDING / FIRST-RUN GUIDE (3-slide intro)
+  // Shown once after first login. Guide explains the app
+  // (attendance / points & badges / privacy) with icons,
+  // lets the user confirm their role, and takes consent.
+  // ═══════════════════════════════════════════════
+  function onboardingDone() {
+    try { return localStorage.getItem('rtc_onboarded_v2') === '1'; } catch (e) { return true; }
+  }
+  function markOnboardingDone() {
+    try { localStorage.setItem('rtc_onboarded_v2', '1'); } catch (e) {}
+  }
+
+  const GUIDE_SLIDES = [
+    { icon: 'event_available', iconBg: 'rgba(0,40,142,0.12)', iconColor: '#00288e', title: 'تابِع حضورك بسهولة', body: 'سجّل حضور المحاضرات وشاهد نسب حضورك ومحاضراتك الجارية من مكان واحد. المتطوعون دوّنوا الحضور فورياً.' },
+    { icon: 'workspace_premium', iconBg: 'rgba(0,85,78,0.12)', iconColor: '#00554e', title: 'اجمع النقاط والشارات', body: 'نقاطك تتراكم تلقائياً مع كل حضور. اربح شارات وأُصب متفوقاً على لوحة الصدارة، ثم انهِ كورسك لنيل الشهادة.' },
+    { icon: 'verified_user', iconBg: 'rgba(134,77,14,0.12)', iconColor: '#854d0e', title: 'خصوصيتك أولوية', body: 'بياناتك آمنة ولن تشارك إلا مع مدربيك. يمكنك طلب عذر الغياب والإبلاغ عن أي مشكلة من شاشة الدعم.' },
+  ];
+  let guideSlideIndex = 0;
+
+  function renderGuide() {
+    guideSlideIndex = 0; // always open the guide at the first slide
+    const wrap = document.getElementById('guide-slider');
+    if (!wrap) return;
+    wrap.innerHTML = GUIDE_SLIDES.map((s, i) => `
+      <div class="guide-slide ${i === guideSlideIndex ? 'active' : ''}" data-slide="${i}">
+        <div class="guide-icon"><span class="material-symbols-outlined" style="color:${s.iconColor};font-size:44px;">${s.icon}</span></div>
+        <h2 class="text-xl font-bold text-on-surface mt-6 animate-pop">${escapeHtml(s.title)}</h2>
+        <p class="text-on-surface-variant text-sm leading-relaxed mt-3 px-2">${escapeHtml(s.body)}</p>
+      </div>
+    `).join('');
+    const dots = document.getElementById('guide-dots');
+    if (dots) dots.innerHTML = GUIDE_SLIDES.map((_, i) =>
+      `<span class="guide-dot ${i === guideSlideIndex ? 'on' : ''}" data-dot="${i}"></span>`).join('');
+    // Prefill the role/consent states
+    const roleName = { student: 'طالب', volunteer: 'متطوع', admin: 'مشرف' }[currentRole] || 'طالب';
+    const roleEl = document.getElementById('guide-role');
+    if (roleEl && roleEl.textContent !== roleName) roleEl.textContent = roleName;
+    const c1 = document.getElementById('guide-consent');
+    if (c1) { c1.checked = false; }
+    // Reset the slideshow to the first slide with a fresh CTA state
+    guideSlideIndex = 0;
+    const card = document.getElementById('guide-consent-card');
+    if (card) card.classList.add('hidden');
+    const cta = guideCta();
+    if (cta) { cta.textContent = 'التالي'; cta.classList.remove('guide-cta-finish'); cta.classList.remove('opacity-50'); }
+    const hint = guideHint();
+    if (hint) hint.textContent = 'مرّروا للاطلاع على الدليل';
+  }
+
+  function guideCta() { return document.getElementById('guide-cta'); }
+  function guideHint() { return document.getElementById('guide-hint'); }
+
+  window.goToSlide = function (i) {
+    haptic(8);
+    const n = GUIDE_SLIDES.length;
+    guideSlideIndex = Math.max(0, Math.min(i, n - 1));
+    const wrap = document.getElementById('guide-slider');
+    if (wrap) {
+      Array.prototype.slice.call(wrap.children).forEach((el, idx) => {
+        el.classList.toggle('active', idx === guideSlideIndex);
+      });
+    }
+    const dots = document.getElementById('guide-dots');
+    if (dots) {
+      Array.prototype.slice.call(dots.children).forEach((el, idx) => {
+        el.classList.toggle('on', idx === guideSlideIndex);
+      });
+    }
+    // Consent card + CTA tune by slide
+    const card = document.getElementById('guide-consent-card');
+    const cta = guideCta();
+    const hint = guideHint();
+    if (guideSlideIndex < n - 1) {
+      if (card) card.classList.add('hidden');
+      if (cta) { cta.textContent = 'التالي'; cta.classList.remove('guide-cta-finish'); }
+      if (hint) hint.textContent = 'مرّروا للاطلاع على الدليل';
+    } else {
+      if (card) card.classList.remove('hidden');
+      if (cta) { cta.textContent = 'بدء الرحلة'; cta.classList.add('guide-cta-finish'); }
+      if (hint) hint.textContent = 'وافق على الخصوصية لبدء التجربة';
+    }
+  };
+  window.toggleConsent = function (chk) {
+    const on = !!chk && chk.checked;
+    // Visually brighten the final CTA once consent is given (guideNext guards the click).
+    const cta = guideCta();
+    if (cta && cta.textContent.trim() === 'بدء الرحلة') cta.classList.toggle('opacity-50', !on);
+    haptic(on ? 6 : 3);
+  };
+  window.guideNext = function () {
+    const n = GUIDE_SLIDES.length;
+    const cta = guideCta();
+    if (guideSlideIndex < n - 1) {
+      window.goToSlide(guideSlideIndex + 1);
+    } else {
+      // On the last slide the CTA is "بدء الرحلة" — require consent then enter.
+      const c1 = document.getElementById('guide-consent');
+      if (!c1 || !c1.checked) {
+        showToast('يرجى الموافقة على سياسة الخصوصية أولاً', 'warning');
+        hapticPattern('warning');
+        return;
+      }
+      markOnboardingDone();
+      const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
+      navigate(homes[currentRole] || 's-home');
+      showToast('أهلاً بك في مسار RTC 🎉', 'success');
+      hapticPattern('success');
+    }
+  };
+  window.guideSkip = function () {
+    markOnboardingDone();
+    const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
+    navigate(homes[currentRole] || 's-home');
+    showToast('أتممت الدليل', 'success');
+    haptic(10);
+  };
+
+  // ═══════════════════════════════════════════════
+  // SUPPORT — HELP + FAQ + REPORT A PROBLEM
+  // Shared screen for every role.
+  // ═══════════════════════════════════════════════
+  const FAQ_ITEMS = [
+    { q: 'كيف أحسب نسبة حضوري؟', a: 'نسبة الحضور تُحسب تلقائياً من سجل محاضراتك (حاضر/متأخر/غائب). تجدها في الصفحة الرئيسية وتفاصيل كل كورس.' },
+    { q: 'كيف أحصل على الشهادة؟', a: 'أكمل 75% حضوراً على الأقل في الكورس. تظهر شهادتك جاهزة في صفحة "الشهادات" مع رمز تحقق QR قابلاً للتحميل.' },
+    { q: 'كيف أطلب عذر غياب؟', a: 'من بروفايلك اضغط "طلب عذر غياب"، اختر المحاضرة المتغيّبة وارفع المستند الداعم. تتم مراجعته من المتطوع.' },
+    { q: 'الوضع الليلي لا يعمل؟', a: 'افتح بروفايلك وفعّل "الوضع الليلي". يُحفظ اختيارك ويُطبّق تلقائياً في الزيارات التالية.' },
+    { q: 'كيف أتواصل مع مدربي؟', a: 'من شاشة الحضور لدى المتطوع، أو عبر زر واتساب في الزاوية أعلى شاشة الدعم هذه للتواصل الفوري.' },
+    { q: 'بياناتي في غير مكانها؟', a: 'اطلب من المتطوع تعديل ملفك، أو أرسل إلينا بلاغاً من تبويب "إبلاغ عن مشكلة" وسنصححها.' },
+  ];
+
+  function renderSupport() {
+    // Reset the accordion + tabs every time it's opened
+    window.supTab && supTab('help');
+    const faq = document.getElementById('faq-list');
+    if (faq) {
+      faq.innerHTML = FAQ_ITEMS.map((f, i) => `
+        <div class="faq-item" data-faq="${i}">
+          <button type="button" class="faq-q tap" onclick="supFaq(this)">
+            <span>${escapeHtml(f.q)}</span>
+            <span class="material-symbols-outlined text-outline faq-chev">expand_more</span>
+          </button>
+          <div class="faq-a">${escapeHtml(f.a)}</div>
+        </div>`).join('');
+    }
+    // Reset the report form to a fresh state
+    const form = document.getElementById('report-form');
+    const success = document.getElementById('report-success');
+    if (form) form.classList.remove('hidden');
+    if (success) success.classList.add('hidden');
+    const desc = document.getElementById('rp-desc');
+    if (desc) desc.value = '';
+    const type = document.getElementById('rp-type');
+    if (type) type.selectedIndex = 0;
+  }
+
+  window.supTab = function (tab) {
+    haptic(5);
+    const help = document.getElementById('sup-help');
+    const report = document.getElementById('sup-report');
+    const tHelp = document.getElementById('sup-tab-help');
+    const tRep = document.getElementById('sup-tab-report');
+    if (tab === 'report') {
+      if (help) help.classList.add('hidden');
+      if (report) report.classList.remove('hidden');
+      if (tHelp) { tHelp.classList.remove('active'); tHelp.classList.add('text-on-surface-variant'); }
+      if (tRep) { tRep.classList.add('active'); tRep.classList.remove('text-on-surface-variant'); }
+    } else {
+      if (report) report.classList.add('hidden');
+      if (help) help.classList.remove('hidden');
+      if (tRep) { tRep.classList.remove('active'); tRep.classList.add('text-on-surface-variant'); }
+      if (tHelp) { tHelp.classList.add('active'); tHelp.classList.remove('text-on-surface-variant'); }
+    }
+  };
+
+  window.supFaq = function (btn) {
+    haptic(5);
+    const item = btn.closest('.faq-item');
+    const wasOpen = item.classList.contains('open');
+    // Close all, then open the tapped one (single-open accordion)
+    document.querySelectorAll('.faq-item.open').forEach(el => el.classList.remove('open'));
+    if (!wasOpen) {
+      item.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  window.submitReport = function () {
+    const typeEl = document.getElementById('rp-type');
+    const descEl = document.getElementById('rp-desc');
+    const type = typeEl ? typeEl.value : '';
+    const desc = descEl ? (descEl.value || '').trim() : '';
+    if (!desc) { showToast('اكتب وصف المشكلة', 'error'); fieldError(descEl, 'يرجى كتابة وصف للمشكلة'); return; }
+    if (desc.length < 10) { showToast('وصف المشكلة قصير جداً', 'warning'); return; }
+    const me = currentStudent() || {};
+    store.reports = store.reports || [];
+    store.reports.unshift({
+      id: Date.now(), type, desc, from: me.name || 'مستخدم',
+      date: new Date().toISOString().slice(0, 10), status: 'pending'
+    });
+    store.auditLog.unshift({ icon: 'support_agent', text: 'بلاغ جديد: ' + type, time: 'الآن', color: '#0077ed' });
+    save();
+    // Haptic + animate the success state
+    hapticPattern('success');
+    fieldError(descEl, '');
+    const form = document.getElementById('report-form');
+    const success = document.getElementById('report-success');
+    if (form) form.classList.add('hidden');
+    if (success) { success.classList.remove('hidden'); success.classList.add('od-success-in'); }
+    showToast('أُرسل بلاغك لفريق مركز رسالة', 'success');
   };
 
   // OTP input forward

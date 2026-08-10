@@ -159,6 +159,26 @@ p, button, h1, h2, h3, h4, span[class*=" font"], .truncate{
 }
 .nav-icon{font-size:22px; transition:font-variation-settings 0.2s, transform 0.2s;}
 .nav-lbl{font-size:10px; font-weight:600; letter-spacing:0.01em;}
+.nav-btn::after{
+  content:''; position:absolute; bottom:5px; left:50%; translate:-50% 0;
+  width:4px; height:4px; border-radius:999px; background:currentColor;
+  opacity:0; transform:scale(0); transition:opacity 0.25s, transform 0.3s;
+}
+.nav-btn.active::after{opacity:1; transform:scale(1);}
+
+/* Stagger reveal — children pop in sequence once .in lands */
+.stag {
+  opacity:1;
+}
+.stag > *{opacity:0; animation:fadeInUp 0.5s cubic-bezier(0.16,1,0.3,1) forwards;}
+.stag > *:nth-child(1){animation-delay:0.02s;}
+.stag > *:nth-child(2){animation-delay:0.07s;}
+.stag > *:nth-child(3){animation-delay:0.12s;}
+.stag > *:nth-child(4){animation-delay:0.17s;}
+.stag > *:nth-child(5){animation-delay:0.22s;}
+.stag > *:nth-child(6){animation-delay:0.27s;}
+.stag > *:nth-child(7){animation-delay:0.32s;}
+.stag > *:nth-child(8){animation-delay:0.37s;}
 
 /* Material symbols helpers & FOUT guard */
 .material-symbols-outlined {
@@ -426,6 +446,94 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
 [data-theme="dark"] .scr-body-full .bg-surface-container, .dark .scr-body-full .bg-surface-container{background:#1a2231 !important;}
 [data-theme="dark"] .empty-state .bg-surface-container, .dark .empty-state .bg-surface-container{background:#1a2231 !important;}
 [data-theme="dark"] .toggle-track.off, .dark .toggle-track.off{background:#2a3548;}
+
+/* ════════════════════
+   FIRST-RUN GUIDE (3-slide intro)
+   ════════════════════ */
+.guide-slider{position:relative;width:100%;overflow:hidden;min-height:280px;}
+.guide-slide{
+  position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+  justify-content:center; text-align:center; padding:0 18px;
+  opacity:0; transform:translateX(-24px) scale(0.98); pointer-events:none;
+  transition:opacity 0.4s cubic-bezier(0.16,1,0.3,1), transform 0.45s cubic-bezier(0.16,1,0.3,1);
+}
+[dir="rtl"] .guide-slide{transform:translateX(24px) scale(0.98);}
+.guide-slide.active{opacity:1; transform:none; pointer-events:auto;}
+.guide-icon{
+  width:104px; height:104px; border-radius:32px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow:0 10px 30px rgba(0,40,142,0.16);
+  background:#fff;
+}
+[data-theme="dark"] .guide-icon, .dark .guide-icon{background:#232c3d; box-shadow:0 10px 30px rgba(0,0,0,0.4);}
+.guide-dots{display:flex; gap:6px; justify-content:center; margin-top:26px;}
+.guide-dot{width:7px; height:7px; border-radius:999px; background:#c4c5d5; transition:width 0.3s, background 0.3s;}
+.guide-dot.on{width:22px; background:#00288e;}
+[data-theme="dark"] .guide-dot, .dark .guide-dot{background:#2a3548;}
+[data-theme="dark"] .guide-dot.on, .dark .guide-dot.on{background:#a8b8ff;}
+.guide-role-chip{
+  display:inline-flex; align-items:center; gap:6px;
+  background:rgba(0,40,142,0.09); color:#053a9e;
+  border:1px solid rgba(0,40,142,0.16);
+  border-radius:999px; padding:6px 14px; font-weight:700; font-size:13px;
+}
+[data-theme="dark"] .guide-role-chip, .dark .guide-role-chip{background:rgba(168,184,255,0.12); color:#a8b8ff; border-color:rgba(168,184,255,0.2);}
+.guide-cta-finish{background:linear-gradient(135deg,#00288e,#00554e) !important;}
+.faq-q:focus-visible, .guide-cta:focus-visible, .avatar-opt:focus-visible, .seg:focus-visible{
+  outline:3px solid rgba(0,40,142,0.4); outline-offset:2px;
+}
+.guide-cta.opacity-50{filter:grayscale(0.5);}
+
+/* FAQ accordion */
+.faq-item{border-bottom:1px solid rgba(196,197,213,0.4);}
+.faq-item:last-child{border-bottom:none;}
+.faq-q{
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:16px; text-align:right; cursor:pointer; user-select:none;
+  font-weight:600; font-size:14px; color:#191c1e;
+}
+.faq-a{
+  max-height:0; overflow:hidden; opacity:0;
+  transition:max-height 0.34s cubic-bezier(0.16,1,0.3,1), opacity 0.3s cubic-bezier(0.16,1,0.3,1);
+  color:#515f74; font-size:13px; line-height:1.7; padding:0 16px;
+}
+.faq-item.open .faq-a{max-height:260px; opacity:1; padding-bottom:16px;}
+.faq-q .faq-chev{transition:transform 0.3s cubic-bezier(0.16,1,0.3,1);}
+.faq-item.open .faq-chev{transform:rotate(180deg);}
+[data-theme="dark"] .faq-item, .dark .faq-item{border-color:rgba(255,255,255,0.08);}
+[data-theme="dark"] .faq-q, .dark .faq-q{color:#e7e9ee;}
+[data-theme="dark"] .faq-a, .dark .faq-a{color:#9aa3b5;}
+
+/* Form field focus lift + label */
+.od-field label{display:block; font-size:12px; font-weight:700; color:#515f74; margin-bottom:6px;}
+.od-field .inp{transition:box-shadow 0.2s cubic-bezier(0.16,1,0.3,1), border-color 0.2s;}
+.od-field .inp:focus{box-shadow:0 0 0 4px rgba(0,40,142,0.12);}
+
+/* Avatar picker */
+.avatar-opt{
+  width:52px; height:52px; border-radius:999px;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; color:#fff; cursor:pointer;
+  border:2px solid transparent; transition:transform 0.2s cubic-bezier(0.16,1,0.3,1);
+}
+.avatar-opt.sel{border-color:#00288e; box-shadow:0 0 0 3px rgba(0,40,142,0.2); transform:scale(1.08);}
+.avatar-opt:nth-child(3n){margin-inline-end:0;}
+
+/* Report-problem success state */
+.od-success{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:44px 24px; gap:14px;
+}
+.od-success .od-check{
+  width:84px; height:84px; border-radius:999px;
+  background:rgba(0,85,78,0.12); display:flex; align-items:center; justify-content:center;
+}
+.od-success-in{animation:odSuccessIn 0.5s cubic-bezier(0.16,1,0.3,1) forwards;}
+@keyframes odSuccessIn{
+  0%{opacity:0; transform:scale(0.9);}
+  60%{opacity:1; transform:scale(1.02);}
+  100%{opacity:1; transform:scale(1);}
+}
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
@@ -922,7 +1030,7 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
   <div class="glass-header">
     <div class="h-16 flex items-center justify-between px-4 pt-safe">
       <h1 class="text-lg font-bold text-on-surface">بروفايلي</h1>
-      <button onclick="showToast('تعديل البيانات قريباً')" class="text-primary font-bold text-sm">تعديل</button>
+      <button onclick="push('s-edit-profile')" class="text-primary font-bold text-sm tap">تعديل</button>
     </div>
   </div>
   <div class="scr-body p-0 flex flex-col gap-0">
@@ -974,8 +1082,8 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
           <div class="flex items-center gap-3"><span class="material-symbols-outlined text-amber-600">assignment_late</span><span class="text-sm font-medium text-on-surface">طلب عذر غياب</span></div>
           <span class="material-symbols-outlined text-outline">chevron_left</span>
         </div>
-        <div class="flex items-center justify-between p-4 tap" onclick="showToast('صفحة المساعدة قريباً')">
-          <div class="flex items-center gap-3"><span class="material-symbols-outlined text-on-surface-variant">help</span><span class="text-sm font-medium text-on-surface">المساعدة والدعم</span></div>
+        <div class="flex items-center justify-between p-4 tap" onclick="push('support')">
+          <div class="flex items-center gap-3"><span class="material-symbols-outlined text-primary">help</span><span class="text-sm font-medium text-on-surface">المساعدة والدعم</span></div>
           <span class="material-symbols-outlined text-outline">chevron_left</span>
         </div>
       </div>
@@ -984,6 +1092,181 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
       <button onclick="handleLogout()" class="w-full h-12 rounded-2xl flex items-center justify-center gap-2 tap border border-error/20" style="background:rgba(186,26,26,0.08);">
         <span class="material-symbols-outlined text-error">logout</span><span class="text-error font-bold text-sm">تسجيل الخروج</span>
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- S-EDIT-PROFILE (pushed — student) -->
+<div id="screen-s-edit-profile" class="screen">
+  <div class="glass-header">
+    <div class="h-16 flex items-center gap-3 px-4 pt-safe">
+      <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
+      <h1 class="text-lg font-bold text-on-surface">تعديل الملف الشخصي</h1>
+    </div>
+  </div>
+  <div class="scr-body px-4 pt-4 pb-8 flex flex-col gap-4">
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <p class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">الصورة الرمزية</p>
+      <div class="flex flex-wrap gap-3" id="se-avatars"></div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-4">
+      <div class="od-field">
+        <label for="se-name">الاسم</label>
+        <input id="se-name" class="inp w-full rounded-xl px-3.5 h-12 bg-white" type="text" placeholder="الاسم الكامل" autocomplete="name">
+      </div>
+      <div class="od-field">
+        <label for="se-phone">رقم الموبايل</label>
+        <input id="se-phone" class="inp w-full rounded-xl px-3.5 h-12 bg-white" type="tel" placeholder="01xxxxxxxxx" autocomplete="tel">
+      </div>
+      <div class="od-field">
+        <label for="se-branch">الفرع</label>
+        <select id="se-branch" class="inp w-full rounded-xl px-3.5 h-12 bg-white">
+          <option>وسط البلد</option><option>مدينة نصر</option><option>الجيزة</option><option>الإسكندرية</option><option>المقر الرئيسي</option>
+        </select>
+      </div>
+    </div>
+    <button onclick="saveProfileEdit()" class="w-full h-12 rounded-2xl bg-primary text-white font-bold text-sm tap">حفظ التعديلات</button>
+  </div>
+</div>
+
+<!-- V-EDIT-PROFILE (pushed — volunteer) -->
+<div id="screen-v-edit-profile" class="screen">
+  <div class="glass-header">
+    <div class="h-16 flex items-center gap-3 px-4 pt-safe">
+      <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
+      <h1 class="text-lg font-bold text-on-surface">تعديل الملف الشخصي</h1>
+    </div>
+  </div>
+  <div class="scr-body px-4 pt-4 pb-8 flex flex-col gap-4">
+    <div class="bg-white rounded-2xl shadow-sm p-4">
+      <p class="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-3">الصورة الرمزية</p>
+      <div class="flex flex-wrap gap-3" id="ve-avatars"></div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-4">
+      <div class="od-field">
+        <label for="ve-name">الاسم</label>
+        <input id="ve-name" class="inp w-full rounded-xl px-3.5 h-12 bg-white" type="text" placeholder="الاسم الكامل" autocomplete="name">
+      </div>
+      <div class="od-field">
+        <label for="ve-phone">رقم الموبايل</label>
+        <input id="ve-phone" class="inp w-full rounded-xl px-3.5 h-12 bg-white" type="tel" placeholder="01xxxxxxxxx" autocomplete="tel">
+      </div>
+      <div class="od-field">
+        <label for="ve-branch">الفرع</label>
+        <select id="ve-branch" class="inp w-full rounded-xl px-3.5 h-12 bg-white">
+          <option>وسط البلد</option><option>مدينة نصر</option><option>الجيزة</option><option>الإسكندرية</option><option>المقر الرئيسي</option>
+        </select>
+      </div>
+    </div>
+    <button onclick="saveVolProfileEdit()" class="w-full h-12 rounded-2xl bg-primary text-white font-bold text-sm tap">حفظ التعديلات</button>
+  </div>
+</div>
+
+<!-- GUIDE (first-run intro — every role) -->
+<div id="screen-guide" class="screen">
+  <div class="scr-body-full flex flex-col">
+    <div class="flex items-center justify-between p-4 pt-safe flex-shrink-0">
+      <h1 class="text-lg font-bold text-on-surface">دليل التطبيق</h1>
+      <button onclick="guideSkip()" class="text-primary font-bold text-sm tap">تخطي</button>
+    </div>
+    <div class="mx-4 flex-1 flex flex-col justify-center anim-fiu" style="animation-delay:0.05s;">
+      <div class="guide-slider" id="guide-slider"></div>
+      <div class="guide-dots" id="guide-dots"></div>
+      <p class="text-center text-xs text-on-surface-variant mt-4" id="guide-hint">مرّروا للاطلاع على الدليل</p>
+    </div>
+    <!-- Consent card (appears on the final slide) -->
+    <div id="guide-consent-card" class="hidden mx-4 mb-3 bg-white rounded-2xl shadow-sm p-4 stag">
+      <div class="flex items-center gap-3">
+        <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style="background:rgba(0,40,142,0.1);">
+          <span class="material-symbols-outlined text-primary">badge</span>
+        </div>
+        <div class="flex-1 text-right">
+          <p class="text-xs text-on-surface-variant">الدور المسجّل به</p>
+          <p class="font-bold text-on-surface" id="guide-role">طالب</p>
+        </div>
+      </div>
+      <label class="mt-3 flex items-start gap-3 p-3 rounded-xl bg-surface-container-low cursor-pointer">
+        <input type="checkbox" id="guide-consent" class="accent-primary w-5 h-5 mt-0.5" onchange="toggleConsent(this)">
+        <span class="text-sm text-on-surface-variant leading-relaxed">أوافق على <span class="text-primary font-semibold">سياسة الخصوصية</span> وعلى تواصل مركز رسالة معي عبر المتطوعين بخصوص دوراتي وحضوري.</span>
+      </label>
+    </div>
+    <div class="mx-4 mb-6">
+      <button id="guide-cta" onclick="guideNext()" class="w-full h-12 rounded-2xl bg-primary text-white font-bold text-sm tap">التالي</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUPPORT (help + FAQ + report a problem — every role) -->
+<div id="screen-support" class="screen">
+  <div class="glass-header">
+    <div class="h-16 flex items-center gap-3 px-4 pt-safe">
+      <button onclick="pop()" class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center tap"><span class="material-symbols-outlined">arrow_forward</span></button>
+      <h1 class="text-lg font-bold text-on-surface">المساعدة والدعم</h1>
+    </div>
+  </div>
+  <div class="scr-body px-4 pt-4 flex flex-col gap-4">
+    <!-- Segmented tabs: مساعدة / إبلاغ عن مشكلة -->
+    <div class="flex bg-surface-container rounded-2xl p-1 gap-1">
+      <button id="sup-tab-help" class="seg flex-1 h-10 rounded-xl text-sm font-bold text-on-surface tap active" onclick="supTab('help')">مساعدة</button>
+      <button id="sup-tab-report" class="seg flex-1 h-10 rounded-xl text-sm font-bold text-on-surface-variant tap" onclick="supTab('report')">إبلاغ عن مشكلة</button>
+    </div>
+
+    <!-- HELP PANE -->
+    <div id="sup-help" class="flex flex-col gap-4">
+      <!-- Quick contact -->
+      <div class="rounded-2xl overflow-hidden shadow-sm" style="background:linear-gradient(135deg,#00288e,#00554e);">
+        <div class="p-5 flex items-center gap-4">
+          <div class="w-12 h-12 rounded-xl bg-white/15 flex items-center justify-center flex-shrink-0"><span class="material-symbols-outlined text-white">support_agent</span></div>
+          <div class="flex-1 text-right">
+            <p class="text-white font-bold text-sm">تحتاج مساعدة مباشرة؟</p>
+            <p class="text-white/70 text-xs mt-0.5">فريق مركز رسالة جاهز للرد</p>
+          </div>
+          <a href="https://wa.me/201000000001" target="_blank" rel="noopener" class="w-11 h-11 rounded-full bg-white/90 flex items-center justify-center flex-shrink-0 tap" aria-label="تواصل واتساب">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#00554e" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.1-1.3A10 10 0 1 0 12 2Zm5.1 14.1c-.2.6-1.2 1.2-1.7 1.2-.5.1-1 .1-1.7-.1-.4-.1-1-.3-1.7-.6-2.9-1.3-4.8-4.1-5-4.3-.2-.2-1.2-1.6-1.2-3s.8-2.1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5s.7 1.8.8 1.9c.1.1.1.3 0 .5 0 .2-.1.3-.3.5l-.4.5c-.2.2-.3.3-.1.6.2.3 1 1.7 2.2 2.7 1.5 1.3 2.7 1.7 3.1 1.9.3.2.5.2.7-.1.2-.3.9-1 1.1-1.4.3-.4.5-.3.9-.2.3.1 2.1 1 2.4 1.2.4.2.6.3.7.4.1.2.1.8-.1 1.4Z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- FAQ -->
+      <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-4 py-3 border-b border-outline-variant/30">
+          <p class="text-sm font-bold text-on-surface">الأسئلة الشائعة</p>
+        </div>
+        <div id="faq-list"></div>
+      </div>
+    </div>
+
+    <!-- REPORT PROBLEM PANE -->
+    <div id="sup-report" class="hidden">
+      <div id="report-form">
+        <div class="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-4">
+          <div class="od-field">
+            <label for="rp-type">نوع المشكلة</label>
+            <select id="rp-type" class="inp w-full rounded-xl px-3.5 h-12 bg-white">
+              <option value="مشكلة تقنية">مشكلة تقنية (تطبيق لا يعمل)</option>
+              <option value="مشكلة في البيانات">مشكلة في بياناتي / الحضور</option>
+              <option value="اقتراح تحسين">اقتراح لتحسين التطبيق</option>
+              <option value="شكوى فريق">شكوى بخصوص فريق أو خدمة</option>
+            </select>
+          </div>
+          <div class="od-field">
+            <label for="rp-desc">وصف المشكلة (بالتفصيل)</label>
+            <textarea id="rp-desc" class="inp w-full rounded-xl px-3.5 py-3 bg-white min-h-[120px]" rows="4" placeholder="اشرح المشكلة بوضوح…"></textarea>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm p-4 mt-4">
+          <p class="text-xs text-on-surface-variant leading-relaxed">عند الإرسال، سيصل بلاغك لفريق مركز رسالة لمتابعته. يمكنك أيضاً التواصل معنا مباشرة عبر واتساب للمشاكل العاجلة.</p>
+        </div>
+        <div class="mb-6 mt-4">
+          <button onclick="submitReport()" class="w-full h-12 rounded-2xl bg-primary text-white font-bold text-sm tap">إرسال البلاغ</button>
+        </div>
+      </div>
+      <div id="report-success" class="od-success od-success-hide hidden" style="background:#fff;border-radius:24px;">
+        <div class="od-check"><span class="material-symbols-outlined" style="color:#00554e;font-size:40px;">verified</span></div>
+        <h3 class="text-lg font-bold text-on-surface">تم استلام بلاغك</h3>
+        <p class="text-on-surface-variant text-sm">شكراً لك! تابع متطوعاً أو الإشعارات لمعرفة التحديث.</p>
+        <button onclick="supTab('help')" class="mt-2 h-11 px-6 rounded-full bg-primary text-white text-sm font-bold tap">حسناً</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1066,7 +1349,7 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
       <h1 class="text-lg font-bold flex-1 text-on-surface">الإشعارات</h1>
       <button class="text-xs font-bold text-primary">تحديد الكل كمقروء</button>
     </div>
-    <div id="snotif-list" class="flex flex-col px-4 pb-6 gap-2 overflow-y-auto"></div>
+    <div id="snotif-list" class="stag flex flex-col px-4 pb-6 gap-2 overflow-y-auto"></div>
   </div>
 </div>
 
@@ -1080,7 +1363,7 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
     <div class="px-4 pb-3 flex-shrink-0">
       <div class="relative"><span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-outline">search</span><input type="text" placeholder="ابحث عن كورس..." class="inp pr-10" id="explore-search"></div>
     </div>
-    <div id="explore-list" class="flex flex-col gap-3 px-4 pb-6 overflow-y-auto"></div>
+    <div id="explore-list" class="stag flex flex-col gap-3 px-4 pb-6 overflow-y-auto"></div>
   </div>
 </div>
 
@@ -1267,7 +1550,10 @@ input[type=date].inp::-webkit-calendar-picker-indicator{opacity:0.6;cursor:point
 <!-- V-PROFILE -->
 <div id="screen-v-profile" class="screen">
   <div class="glass-header">
-    <div class="h-16 flex items-center px-4 pt-safe"><h1 class="text-lg font-bold text-on-surface">بروفايلي</h1></div>
+    <div class="h-16 flex items-center justify-between px-4 pt-safe">
+      <h1 class="text-lg font-bold text-on-surface">بروفايلي</h1>
+      <button onclick="push('v-edit-profile')" class="text-primary font-bold text-sm tap">تعديل</button>
+    </div>
   </div>
   <div class="scr-body p-0 flex flex-col">
     <div class="flex flex-col items-center py-6 px-4">
