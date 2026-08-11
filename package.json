@@ -4,7 +4,7 @@
   "description": "RTC - نظام متابعة مستفيدي الكورسات المجانية",
   "main": "index.html",
   "scripts": {
-    "dev": "npx serve -l 5173",
+    "dev": "npx -y http-server -p 5173",
     "cap:add": "npx cap add android && npx cap add ios",
     "cap:sync": "npx cap sync",
     "cap:open:android": "npx cap open android",
@@ -14,21 +14,21 @@
     "icons": "node generate-icons.js"
   },
   "devDependencies": {
-    "@capacitor/cli": "^6.0.0",
-    "@capacitor/core": "^6.0.0",
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/ios": "^6.0.0",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "serve": "^14.2.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.35.3"
   },
   "dependencies": {
-    "@capacitor/app": "^6.0.0",
-    "@capacitor/haptics": "^6.0.0",
-    "@capacitor/network": "^6.0.0",
-    "@capacitor/preferences": "^6.0.0",
-    "@capacitor/push-notifications": "^6.0.0",
-    "@capacitor/share": "^6.0.0",
-    "@capacitor/splash-screen": "^6.0.0",
-    "@capacitor/status-bar": "^6.0.0"
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/share": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3"
   }
 }

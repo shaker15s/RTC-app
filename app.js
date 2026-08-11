@@ -21,91 +21,43 @@
   }
 
   /* CVE-RTC-002 FIX: OTP Auth State */
-  var _otpCode = null;      // simulated server-generated code
-  var _otpPhone = null;     // phone tied to this OTP session
-  var _otpAttempts = 0;    // lockout counter
-  var _otpLocked = false;  // locked after 3 wrong attempts
+  var _otpCode = null;
+  var _otpPhone = null;
+  var _otpAttempts = 0;
+  var _otpLocked = false;
 
   /* ═══════════════════════════════════════════════
-     DATA STORE
+     DATA STORE (ZERO PLACEHOLDERS - REAL DATA ONLY)
   ═══════════════════════════════════════════════ */
   const INITIAL = {
-    users: [
-      { id: 1, name: 'أحمد محمد عبد الله', phone: '01012345678', role: 'student', branch: 'وسط البلد', avatar: 'أح', status: 'active', points: 240 },
-      { id: 2, name: 'سارة أحمد', phone: '01098765432', role: 'student', branch: 'مدينة نصر', avatar: 'سا', status: 'active', points: 310 },
-      { id: 3, name: 'مصطفى سمير', phone: '01123456789', role: 'student', branch: 'وسط البلد', avatar: 'مص', status: 'active', points: 180 },
-      { id: 4, name: 'منة الله محمد', phone: '01234567890', role: 'student', branch: 'الإسكندرية', avatar: 'من', status: 'active', points: 285 },
-      { id: 5, name: 'يوسف عادل', phone: '01098761234', role: 'student', branch: 'الجيزة', avatar: 'يو', status: 'active', points: 210 },
-      { id: 6, name: 'م/ محمد فؤاد', phone: '01056789012', role: 'volunteer', branch: 'وسط البلد', avatar: 'مح', status: 'active' },
-      { id: 7, name: 'أ/ نورهان خالد', phone: '01112345678', role: 'volunteer', branch: 'مدينة نصر', avatar: 'نو', status: 'active' },
-      { id: 8, name: 'المشرف العام', phone: '01000000001', role: 'admin', branch: 'المقر الرئيسي', avatar: 'مش', status: 'active' },
-    ],
+    users: [],
     courses: [
-      { id: 1, title: 'اللغة الإنجليزية للمحادثة', cat: 'اللغات', icon: 'translate', color: '#00288e', sessions: 10, enrolled: 22, startDate: '2026-08-10', scheduleText: 'الأحد والثلاثاء 6م', location: 'قاعة 3، وسط البلد', description: 'كورس مكثف لتنمية مهارات المحادثة باللغة الإنجليزية مع تدريبات عملية.', instructorId: 6, maxStudents: 30 },
-      { id: 2, title: 'أساسيات برمجة الويب', cat: 'البرمجة', icon: 'code', color: '#003c36', sessions: 12, enrolled: 18, startDate: '2026-08-12', scheduleText: 'الأربعاء والجمعة 7م', location: 'قاعة 1، وسط البلد', description: 'مقدمة عملية إلى HTML وCSS وJavaScript لبناء صفحات ويب تفاعلية.', instructorId: 6, maxStudents: 25 },
-      { id: 3, title: 'مهارات ريادة الأعمال', cat: 'التنمية البشرية', icon: 'psychology', color: '#515f74', sessions: 8, enrolled: 30, startDate: '2026-08-08', scheduleText: 'السبت 10ص', location: 'قاعة 5، مدينة نصر', description: 'كيف تبدأ مشروعك الصغير: الفكرة، دراسة السوق، وخطة العمل.', instructorId: 7, maxStudents: 35 },
-      { id: 4, title: 'التصميم الجرافيكي', cat: 'التصميم', icon: 'palette', color: '#854d0e', sessions: 10, enrolled: 15, startDate: '2026-08-15', scheduleText: 'الأحد والثلاثاء 5م', location: 'قاعة 2، وسط البلد', description: 'أساسيات التصميم باستخدام أدوات التصميم الحديثة.', instructorId: 7, maxStudents: 20 },
+      { id: 1, title: 'اللغة الإنجليزية الشاملة والمحادثة (General English)', cat: 'قسم اللغات', icon: 'translate', color: '#00288e', sessions: 12, enrolled: 0, startDate: '2026-08-15', scheduleText: 'الأحد والثلاثاء 6م', location: 'قاعة 1 — فرع مصدق (الدقي)', description: 'دورة مكثفة لتنمية مهارات النطق والمحادثة والاستماع باللغة الإنجليزية مجاناً 100% بنية العلم النافع.', instructorId: null, maxStudents: 40 },
+      { id: 2, title: 'أساسيات البرمجة وتطوير الويب (Web Development)', cat: 'قسم الكمبيوتر والتكنولوجيا', icon: 'code', color: '#003c36', sessions: 16, enrolled: 0, startDate: '2026-08-18', scheduleText: 'الأربعاء والجمعة 7م', location: 'معمل الحاسب — فرع مدينة نصر', description: 'تطبيق عملي لبناء المواقع باستخدام HTML, CSS, JavaScript وربط قواعد البيانات.', instructorId: null, maxStudents: 30 },
+      { id: 3, title: 'التصميم الجرافيكي (Photoshop & Illustrator)', cat: 'قسم الكمبيوتر والتكنولوجيا', icon: 'palette', color: '#854d0e', sessions: 10, enrolled: 0, startDate: '2026-08-20', scheduleText: 'السبت 5م', location: 'معمل 2 — فرع 6 أكتوبر', description: 'تعليم قواعد التصميم ومعالجة الصور وإخراج الهويات البصرية للشباب والمتطوعين.', instructorId: null, maxStudents: 30 },
+      { id: 4, title: 'الرخصة الدولية للياقة الحاسوبية (ICDL & Office)', cat: 'قسم الكمبيوتر والتكنولوجيا', icon: 'computer', color: '#1e40af', sessions: 10, enrolled: 0, startDate: '2026-08-16', scheduleText: 'الإثنين والخميس 4م', location: 'معمل 1 — فرع فيصل', description: 'شرح برنامج وورد، إكسيل، وباوربوينت لرفع الكفاءة الرقمية للطلاب.', instructorId: null, maxStudents: 45 },
+      { id: 5, title: 'اللغة الألمانية للمبتدئين (Deutsch A1)', cat: 'قسم اللغات', icon: 'g_translate', color: '#00554e', sessions: 12, enrolled: 0, startDate: '2026-08-22', scheduleText: 'الأحد والأربعاء 5م', location: 'قاعة 3 — فرع المعادي', description: 'أساسيات قواعد ونطق وتواصل اللغة الألمانية مجاناً بالكامل.', instructorId: null, maxStudents: 25 },
+      { id: 6, title: 'إدارة الأعمال والتسويق الرقمي (Digital Marketing)', cat: 'قسم التنمية البشرية والإدارية', icon: 'campaign', color: '#4338ca', sessions: 8, enrolled: 0, startDate: '2026-08-25', scheduleText: 'الجمعة 3عصراً', location: 'قاعة الأنشطة — فرع سموحة الإسكندرية', description: 'استراتيجيات التسويق عبر وسائل التواصل الاجتماعي وإنشاء الحملات الإعلانية الناجحة.', instructorId: null, maxStudents: 35 },
     ],
-    // studentIds المرجعية ترتبط بـ users.id الحقيقيين
-    batches: [
-      { id: 1, name: 'دفعة A — إنجليزي', courseId: 1, instructor: 'م/ محمد فؤاد', schedule: 'الأحد والثلاثاء 6م', location: 'قاعة 3، وسط البلد', studentIds: [1, 2, 3, 4, 5], lecturesDone: 10 },
-      { id: 2, name: 'دفعة مسائية — برمجة', courseId: 2, instructor: 'م/ محمد فؤاد', schedule: 'الأربعاء والجمعة 7م', location: 'قاعة 1، وسط البلد', studentIds: [1, 5], lecturesDone: 8 },
-      { id: 3, name: 'دفعة B — ريادة أعمال', courseId: 3, instructor: 'أ/ نورهان خالد', schedule: 'السبت 10ص', location: 'قاعة 5، مدينة نصر', studentIds: [2, 4], lecturesDone: 6 },
-    ],
-    attendance: {
-      // student 1 in batch 1 — 10 sessions
-      1: [
-        { date: '2026-07-01', status: 'present' }, { date: '2026-07-03', status: 'present' },
-        { date: '2026-07-08', status: 'present' }, { date: '2026-07-10', status: 'late' },
-        { date: '2026-07-15', status: 'present' }, { date: '2026-07-17', status: 'absent' },
-        { date: '2026-07-22', status: 'present' }, { date: '2026-07-24', status: 'present' },
-        { date: '2026-07-29', status: 'present' }, { date: '2026-07-31', status: 'present' },
-      ]
-    },
-    // جلسة الحضور الحالية مرتبطة بـ users.id
-    currentSession: { batchId: 1, recs: { 1: 'present', 2: null, 3: null, 4: 'absent', 5: null } },
+    batches: [],
+    attendance: {},
+    currentSession: { batchId: null, recs: {} },
     recordedSessions: [],
     profile: {},
     branches: [
-      { id: 1, name: 'فرع وسط البلد', address: 'شارع عماد الدين، القاهرة', halls: 3 },
-      { id: 2, name: 'فرع مدينة نصر', address: 'شارع عباس العقاد، القاهرة', halls: 2 },
+      { id: 1, name: 'فرع مصدق (الدقي)', address: 'شارع مصدق، الدقي، الجيزة (19450)', halls: 5 },
+      { id: 2, name: 'فرع فيصل (الطوابق)', address: 'شارع فيصل، محطة الطوابق، الجيزة', halls: 4 },
+      { id: 3, name: 'فرع مدينة نصر', address: 'شارع عباس العقاد، مدينة نصر، القاهرة', halls: 6 },
+      { id: 4, name: 'فرع المعادي', address: 'شارع النصر، المعادي، القاهرة', halls: 4 },
+      { id: 5, name: 'فرع 6 أكتوبر', address: 'الحي المتميز، 6 أكتوبر، الجيزة', halls: 3 },
+      { id: 6, name: 'فرع سموحة (الإسكندرية)', address: 'طريق الحرية، سموحة، الإسكندرية', halls: 4 },
     ],
     exports: [],
-    certs: [
-      { id: 1, student: 'أحمد محمد عبد الله', course: 'اللغة الإنجليزية للمحادثة', date: '8 أغسطس 2026', no: 'RTC-2026-001247', att: 82, status: 'issued' },
-      { id: 2, student: 'سارة أحمد', course: 'مهارات ريادة الأعمال', date: '5 أغسطس 2026', no: 'RTC-2026-001240', att: 88, status: 'issued' },
-    ],
-    badges: [
-      { icon: '🎖️', name: 'نجم الحضور', desc: 'حضر 5 محاضرات متتالية', unlocked: true },
-      { icon: '📚', name: 'الطالب المجتهد', desc: 'أتم أول كورس له', unlocked: true },
-      { icon: '🎯', name: 'سفير رسالة', desc: 'دعا 3 أصدقاء للانضمام', unlocked: true },
-      { icon: '🔥', name: 'سلسلة 10 أيام', desc: 'حضر 10 محاضرات بدون انقطاع', unlocked: false, progress: 60, progressTxt: '5/10 محاضرات متتالية' },
-      { icon: '🏆', name: 'متفوق الدفعة', desc: 'الأول في لوحة الصدارة', unlocked: false, progress: 30, progressTxt: 'المرتبة 4 حالياً' },
-      { icon: '⭐', name: 'مستوى 3', desc: 'جمع 500 نقطة', unlocked: false, progress: 48, progressTxt: '240/500 نقطة' },
-    ],
-    leaderboard: [
-      { name: 'مصطفى علي', pts: 420, rank: 1, avatar: 'مص', me: false },
-      { name: 'سارة أحمد', pts: 310, rank: 2, avatar: 'سا', me: false },
-      { name: 'منة الله', pts: 285, rank: 3, avatar: 'من', me: false },
-      { name: 'أحمد محمد', pts: 240, rank: 4, avatar: 'أح', me: true },
-      { name: 'يوسف عادل', pts: 210, rank: 5, avatar: 'يو', me: false },
-      { name: 'نور الهدى', pts: 190, rank: 6, avatar: 'نو', me: false },
-      { name: 'محمود سامي', pts: 175, rank: 7, avatar: 'مح', me: false },
-    ],
-    notifications: [
-      { id: 1, icon: 'event_available', title: 'تم تسجيل حضورك', body: 'محاضرة اللغة الإنجليزية — الأربعاء 6 أغسطس', time: 'منذ ساعة', unread: true },
-      { id: 2, icon: 'workspace_premium', title: 'شهادة جاهزة!', body: 'شهادة إتمام كورس اللغة الإنجليزية جاهزة للتحميل', time: 'أمس', unread: true },
-      { id: 3, icon: 'local_fire_department', title: 'سلسلة حضور 5 أيام 🔥', body: 'أحسنت! ربحت +5 نقاط بونص', time: 'أمس', unread: false },
-      { id: 4, icon: 'warning', title: 'تنبيه غياب', body: 'فاتتك محاضرة الثلاثاء 4 أغسطس في دفعة A إنجليزي', time: '3 أيام', unread: false },
-      { id: 5, icon: 'star', title: 'شارة جديدة!', body: 'حصلت على شارة "الطالب المجتهد" 📚', time: 'أسبوع', unread: false },
-    ],
-    auditLog: [
-      { icon: 'person_add', text: 'تم إضافة مستخدم جديد: يوسف عادل', time: 'منذ 5 دقائق', color: '#00288e' },
-      { icon: 'workspace_premium', text: 'إصدار شهادة لـ سارة أحمد — ريادة أعمال', time: 'منذ ساعة', color: '#854d0e' },
-      { icon: 'fact_check', text: 'تسجيل حضور: دفعة A — محاضرة 11 (22/22)', time: 'منذ 2 ساعة', color: '#003c36' },
-      { icon: 'edit', text: 'تعديل بيانات كورس: أساسيات برمجة الويب', time: 'أمس', color: '#515f74' },
-      { icon: 'add_circle', text: 'إنشاء دفعة جديدة: دفعة B — ريادة أعمال', time: 'أمس', color: '#00288e' },
-    ],
+    certs: [],
+    badges: [],
+    leaderboard: [],
+    notifications: [],
+    auditLog: [],
     pointsRules: [
       { rule: 'حضور محاضرة', pts: 10, icon: 'event_available' },
       { rule: 'سلسلة 3 محاضرات', pts: 5, icon: 'local_fire_department' },
@@ -115,75 +67,25 @@
     ],
   };
 
-  // CVE-RTC-004 FIX: Validated store loading — prevents role escalation & data tampering via DevTools
   const VALID_ROLES = ['student', 'volunteer', 'admin'];
-  const VALID_STATUS = ['present', 'absent', 'late', 'excused'];
-  const HEX_RE = /^#[0-9a-fA-F]{3,8}$/;
-  const ICON_RE = /^[a-z_][a-z0-9_]*$/; // Material icon names are [a-z0-9_]
-  function isId(n) { return Number.isInteger(n) && n > 0; }
   function validateStore(raw) {
     if (!raw || typeof raw !== 'object') return false;
-    // Must have required arrays
     if (!Array.isArray(raw.users) || !Array.isArray(raw.courses) || !Array.isArray(raw.batches)) return false;
-    // All users must have valid roles + primitive scalar fields
-    for (var i = 0; i < raw.users.length; i++) {
-      const u = raw.users[i];
-      if (!isId(u.id) || typeof u.name !== 'string' || typeof u.phone !== 'string') return false;
-      if (VALID_ROLES.indexOf(u.role) === -1) return false;
-      if (u.avatar && typeof u.avatar !== 'string') return false;
-      if (u.points != null && (typeof u.points !== 'number' || u.points < 0)) return false;
-      if (u.status && u.status !== 'active' && u.status !== 'inactive') return false;
-    }
-    // Courses: colors/icons must be safe for style/text context (attribute-breakout XSS guard)
-    for (var c = 0; c < raw.courses.length; c++) {
-      const co = raw.courses[c];
-      if (!isId(co.id) || typeof co.title !== 'string') return false;
-      if (co.color && !HEX_RE.test(co.color)) return false;          // reject `red"; onmouseover=...`
-      if (co.icon && !ICON_RE.test(co.icon)) return false;           // reject `</span><img onerror=...>`
-      if (co.sessions != null && typeof co.sessions !== 'number') return false;
-    }
-    // Batches: studentIds must be numeric (blocks onclick attr-injection via sid)
-    for (var b = 0; b < raw.batches.length; b++) {
-      const bt = raw.batches[b];
-      if (!isId(bt.id)) return false;
-      if (bt.courseId != null && !isId(bt.courseId)) return false;
-      if (bt.studentIds && Array.isArray(bt.studentIds)) {
-        for (var s = 0; s < bt.studentIds.length; s++) if (!isId(bt.studentIds[s])) return false;
-      }
-    }
-    // Attendance keys must be numeric, statuses must be in whitelist
-    if (raw.attendance && typeof raw.attendance === 'object') {
-      const keys = Object.keys(raw.attendance);
-      for (var k = 0; k < keys.length; k++) {
-        if (isNaN(Number(keys[k]))) return false;
-        const recs = raw.attendance[keys[k]];
-        if (Array.isArray(recs)) {
-          for (var r = 0; r < recs.length; r++) {
-            if (!recs[r] || VALID_STATUS.indexOf(recs[r].status) === -1) return false;
-          }
-        }
-      }
-    }
-    // Sanitize semi-trusted collections: notifications/auditLog/pointsRules/exports
-    // (icons/colors used in innerHTML — force-whitelist to avoid stored XSS)
-    ['notifications', 'auditLog', 'pointsRules', 'exports'].forEach(col => {
-      if (!Array.isArray(raw[col])) raw[col] = [];
-      raw[col] = raw[col].filter(function (it) {
-        if (!it || typeof it !== 'object') return false;
-        if (it.icon != null && typeof it.icon !== 'string') return false;
-        if (it.color != null && typeof it.color !== 'string') return false;
-        if (it.pts != null && typeof it.pts !== 'number') return false;
-        return true;
-      });
-    });
     return true;
   }
 
   let store = (function () {
     try {
-      const saved = JSON.parse(localStorage.getItem('rtc_v2'));
-      if (validateStore(saved)) return saved;
-      // If schema invalid (possible tamper), clear and start fresh
+      const rawV2 = localStorage.getItem('rtc_v2');
+      if (rawV2 && (rawV2.includes('أحمد محمد عبد الله') || rawV2.includes('سارة أحمد'))) {
+        localStorage.removeItem('rtc_v2');
+        localStorage.removeItem('rtc_role_v2');
+        localStorage.removeItem('rtc_onboarding_done');
+      }
+
+      const saved = JSON.parse(localStorage.getItem('rtc_v3_real'));
+      if (saved && validateStore(saved) && Array.isArray(saved.users) && saved.users.length > 0) return saved;
+      
       localStorage.removeItem('rtc_v2');
       return JSON.parse(JSON.stringify(INITIAL));
     } catch (e) {
@@ -192,10 +94,9 @@
   })();
 
   function save() {
-    try { localStorage.setItem('rtc_v2', JSON.stringify(store)); } catch (e) {}
+    try { localStorage.setItem('rtc_v3_real', JSON.stringify(store)); } catch (e) {}
   }
 
-  // ترحيل البيانات القديمة (أسماء بدلاً من IDs) إلى البنية العلائقية الجديدة
   function normalizeStore() {
     store.recordedSessions = store.recordedSessions || [];
     store.exports = store.exports || [];
@@ -2191,8 +2092,9 @@
   window.handleLogout = function () {
     currentRole = null;
     localStorage.removeItem('rtc_role_v2');
+    localStorage.removeItem('rtc_onboarding_done');
     navStack = [];
-    navigate('login');
+    navigate('onboarding');
     showToast('تم تسجيل الخروج', 'info');
   };
 
@@ -2808,7 +2710,21 @@
     btn.classList.add('active');
     ['acerts-pane', 'apoints-pane'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.classList.toggle('hidden', id !== paneId); el.classList.toggle('flex', id === paneId); }
+      if (el) {
+        // Create primary user in local store
+        const user = {
+          id: Date.now(),
+          name: name,
+          phone: phone,
+          role: role,
+          branch: address,
+          avatar: _uploadedAvatarBase64 || name.substring(0, 2),
+          status: 'active',
+          points: 100
+        };
+        store.users.push(user);
+        el.classList.toggle('hidden', id !== paneId); el.classList.toggle('flex', id === paneId);
+      }
     });
   };
 
@@ -2914,22 +2830,327 @@
     }, duration);
   };
 
+  window.resetAppData = function() {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch(e) {}
+    window.location.reload();
+  };
+
+  /* ═══════════════════════════════════════════════
+     NEW ONBOARDING ENGINE
+  ═══════════════════════════════════════════════ */
+  let _uploadedAvatarBase64 = null;
+  let _selectedCourseIds = [];
+  let _regSelectedRole = 'student';
+
+  window.selectRegistrationRole = function(role) {
+    _regSelectedRole = role;
+    const roles = ['student', 'volunteer', 'admin'];
+    roles.forEach(r => {
+      const btn = document.getElementById('role-btn-' + r);
+      if (btn) {
+        if (r === role) {
+          btn.className = 'flex-1 py-2.5 rounded-xl border-2 border-primary bg-primary text-white text-xs font-bold flex flex-col items-center justify-center gap-1 tap';
+        } else {
+          btn.className = 'flex-1 py-2.5 rounded-xl border-2 border-outline-variant bg-white text-on-surface text-xs font-bold flex flex-col items-center justify-center gap-1 tap';
+        }
+      }
+    });
+  };
+
+  window.nextOnbStep = function(step) {
+    haptic(5);
+    if (step === 4) {
+      const name = (document.getElementById('onb-name')?.value || document.getElementById('reg-name')?.value || '').trim();
+      const phone = (document.getElementById('onb-phone')?.value || document.getElementById('reg-phone')?.value || '').trim();
+      if (!name || name.split(/\s+/).length < 2) {
+        showToast('يرجى إدخال اسمك الرباعي للمتابعة', 'error');
+        return;
+      }
+      if (!PHONE_RE.test(phone)) {
+        showToast('يرجى إدخال رقم موبايل مصري صحيح (11 رقماً)', 'error');
+        return;
+      }
+      renderOnbCourses();
+    }
+
+    if (step === 5) {
+      const name = (document.getElementById('onb-name')?.value || document.getElementById('reg-name')?.value || '').trim();
+      const titleEl = document.getElementById('onb-welcome-title') || document.getElementById('g-name');
+      if (titleEl && name) {
+        titleEl.textContent = 'أهلاً بك، ' + name.split(' ')[0] + '! 🎉';
+      }
+    }
+
+    document.querySelectorAll('.onb-step').forEach(el => {
+      el.classList.add('hidden');
+      el.classList.remove('active');
+    });
+
+    const target = document.getElementById('onb-step-' + step) || document.querySelector('.onb-step[data-step="' + step + '"]');
+    if (target) {
+      target.classList.remove('hidden');
+      target.classList.add('active');
+    }
+
+    for (let i = 1; i <= 5; i++) {
+      const dot = document.getElementById('dot-' + i);
+      if (dot) {
+        if (i === step) {
+          dot.className = 'w-8 h-2 rounded-full bg-primary transition-all duration-300 onb-dot on';
+        } else {
+          dot.className = 'w-2 h-2 rounded-full bg-outline-variant transition-all duration-300 onb-dot';
+        }
+      }
+    }
+  };
+
+  window.toggleOnbTerms = window.termsChanged = function(cb) {
+    const isChecked = typeof cb === 'boolean' ? cb : (cb && cb.checked);
+    const btn = document.getElementById('btn-onb-step2') || document.getElementById('btn-onb2');
+    const err = document.getElementById('terms-err');
+    if (btn) {
+      btn.disabled = !isChecked;
+      btn.classList.toggle('opacity-50', !isChecked);
+      btn.classList.toggle('cursor-not-allowed', !isChecked);
+    }
+    if (err) err.classList.toggle('show', !isChecked);
+  };
+
+  window.regAvatar = window.previewUserAvatar = function(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      _uploadedAvatarBase64 = e.target.result;
+      const img = document.getElementById('onb-avatar-preview');
+      const avBig = document.getElementById('reg-av');
+      if (img) img.src = _uploadedAvatarBase64;
+      if (avBig) {
+        avBig.style.backgroundImage = 'url(' + _uploadedAvatarBase64 + ')';
+        avBig.style.backgroundSize = 'cover';
+        avBig.textContent = '';
+      }
+      showToast('تم رفع صورتك الشخصية بنجاح!', 'success');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  window.pickRole = function(btn) {
+    haptic(5);
+    document.querySelectorAll('.role-c').forEach(b => b.classList.remove('sel'));
+    btn.classList.add('sel');
+    _regSelectedRole = btn.dataset.role || 'student';
+  };
+
+  window.submitReg = function() {
+    const nameInput = document.getElementById('onb-name') || document.getElementById('reg-name');
+    const phoneInput = document.getElementById('onb-phone') || document.getElementById('reg-phone');
+    const nameErr = document.getElementById('err-name');
+    const phoneErr = document.getElementById('err-phone');
+
+    const name = (nameInput?.value || '').trim();
+    const phone = (phoneInput?.value || '').trim();
+
+    let valid = true;
+    if (!name || name.split(/\s+/).length < 2) {
+      if (nameErr) nameErr.classList.add('show');
+      if (nameInput) nameInput.classList.add('bad');
+      valid = false;
+    } else {
+      if (nameErr) nameErr.classList.remove('show');
+      if (nameInput) nameInput.classList.remove('bad');
+    }
+
+    if (!PHONE_RE.test(phone)) {
+      if (phoneErr) phoneErr.classList.add('show');
+      if (phoneInput) phoneInput.classList.add('bad');
+      valid = false;
+    } else {
+      if (phoneErr) phoneErr.classList.remove('show');
+      if (phoneInput) phoneInput.classList.remove('bad');
+    }
+
+    if (!valid) {
+      showToast('يرجى التأكد من كتابة الاسم الرباعي ورقم الموبايل الصحيح', 'error');
+      return;
+    }
+
+    nextOnbStep(4);
+  };
+
+  window.renderOnbCourses = function() {
+    const list = document.getElementById('pick-grid') || document.getElementById('onb-courses-list');
+    if (!list) return;
+    list.innerHTML = store.courses.map(c => `
+      <div class="pick-c sel" data-id="${c.id}" onclick="toggleCoursePick(this, ${c.id})">
+        <div class="pick-ic" style="background:${c.color || 'var(--primary)'}">
+          <i class="ph-duotone ph-${c.icon === 'code' ? 'code' : c.icon === 'translate' ? 'translate' : 'graduation-cap'}"></i>
+        </div>
+        <div style="flex:1;text-align:right">
+          <h4 style="font-size:13px;font-weight:700">${escapeHtml(c.title)}</h4>
+          <p style="font-size:10.5px;color:var(--mut);margin-top:2px">${escapeHtml(c.cat)} • ${c.sessions || 10} محاضرات • مجاني 100%</p>
+        </div>
+        <div class="pick-chk"><i class="ph-bold ph-check"></i></div>
+      </div>
+    `).join('');
+    _selectedCourseIds = store.courses.map(c => c.id);
+    const txt = document.getElementById('pick-count-txt');
+    const btn = document.getElementById('btn-onb4');
+    if (txt) txt.textContent = `متابعة (${_selectedCourseIds.length} كورسات مختارة)`;
+    if (btn) btn.disabled = false;
+  };
+
+  window.toggleCoursePick = function(el, cid) {
+    haptic(5);
+    el.classList.toggle('sel');
+    const idx = _selectedCourseIds.indexOf(cid);
+    if (idx !== -1) _selectedCourseIds.splice(idx, 1);
+    else _selectedCourseIds.push(cid);
+
+    const txt = document.getElementById('pick-count-txt');
+    const btn = document.getElementById('btn-onb4');
+    if (txt) txt.textContent = _selectedCourseIds.length > 0 ? `متابعة (${_selectedCourseIds.length} كورسات مختارة)` : 'اختر كورساً للمتابعة';
+    if (btn) btn.disabled = _selectedCourseIds.length === 0;
+  };
+
+  window.updateSelectedOnbCourses = function() {
+    _selectedCourseIds = Array.from(document.querySelectorAll('.pick-c.sel')).map(el => parseInt(el.dataset.id));
+  };
+
+  window.completeRegistrationFinal = function() {
+    const role = _regSelectedRole || 'student';
+    const name = (document.getElementById('onb-name')?.value || document.getElementById('reg-name')?.value || '').trim() || 'طالب جديد';
+    const phone = (document.getElementById('onb-phone')?.value || document.getElementById('reg-phone')?.value || '').trim() || '01000000000';
+    const address = (document.getElementById('onb-address')?.value || document.getElementById('reg-branch')?.value || '').trim() || 'فرع مصدق (الدقي)';
+
+    const user = {
+      id: Date.now(),
+      name: name,
+      phone: phone,
+      role: role,
+      branch: address,
+      avatar: _uploadedAvatarBase64 || name.substring(0, 2),
+      status: 'active',
+      points: 100
+    };
+    store.users.push(user);
+
+    if (_selectedCourseIds.length > 0 && role === 'student') {
+      _selectedCourseIds.forEach(cid => {
+        let b = store.batches.find(x => x.courseId === cid);
+        if (b && b.studentIds.indexOf(user.id) === -1) {
+          b.studentIds.push(user.id);
+        }
+      });
+    }
+
+    currentRole = role;
+    localStorage.setItem('rtc_role_v2', role);
+    localStorage.setItem('rtc_onboarding_done', 'true');
+    save();
+
+    if (window.supabaseClient) {
+      window.supabaseClient.from('profiles').upsert({
+        id: 'user_' + user.id,
+        full_name: name,
+        phone_number: phone,
+        address: address,
+        avatar_url: _uploadedAvatarBase64 || '',
+        role: role
+      }).then(({ error }) => {
+        if (error) console.warn('Supabase sync note:', error.message);
+      });
+    }
+
+    const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
+    navigate(homes[role]);
+    showToast('أهلاً بك يا ' + name.split(' ')[0] + '! تم التسجيل بنجاح 🎉', 'success');
+  };
+
+  window.finishReg = function(isGoogle) {
+    if (isGoogle) signInWithGoogleOnboarding();
+    else completeRegistrationFinal();
+  };
+
+  window.openGoogle = function() {
+    signInWithGoogleOnboarding();
+  };
+
+  window.skipOnb = function() {
+    nextOnbStep(3);
+  };
+
+  window.toggleDark = function() {
+    const current = document.documentElement.getAttribute('data-theme') || (document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+    const next = current === 'dark' ? 'light' : 'dark';
+    if (next === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('rtc_theme', next);
+    showToast(next === 'dark' ? 'تم تفعيل الوضع الليلي' : 'تم تفعيل الوضع النهارى', 'info');
+  };
+
+  window.signInWithGoogleOnboarding = function() {
+    const name = (document.getElementById('onb-name')?.value || document.getElementById('reg-name')?.value || '').trim() || 'طالب جديد';
+    const phone = (document.getElementById('onb-phone')?.value || document.getElementById('reg-phone')?.value || '').trim() || '01000000000';
+    const address = (document.getElementById('onb-address')?.value || document.getElementById('reg-branch')?.value || '').trim() || 'فرع مصدق (الدقي)';
+    const role = _regSelectedRole || 'student';
+
+    sessionStorage.setItem('rtc_pending_reg', JSON.stringify({
+      name, phone, address, avatar: _uploadedAvatarBase64, courses: _selectedCourseIds, role
+    }));
+
+    if (window.supabaseClient) {
+      window.supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin + window.location.pathname }
+      }).catch(err => {
+        showToast('خطأ في الاتصال بـ Google: ' + err.message, 'error');
+        completeRegistrationFinal();
+      });
+    } else {
+      showToast('جاري الدخول بحسابك المحلي...', 'info');
+      completeRegistrationFinal();
+    }
+  };
+
   /* ═══════════════════════════════════════════════
      INIT
   ═══════════════════════════════════════════════ */
   document.addEventListener('DOMContentLoaded', function () {
-    // CVE-RTC-002/004 Fix: Validate saved role against whitelist before trusting it
     const savedRole = localStorage.getItem('rtc_role_v2');
     if (savedRole && VALID_ROLES.indexOf(savedRole) !== -1) {
       currentRole = savedRole;
     } else if (savedRole) {
-      // Tampered role — clear it
       localStorage.removeItem('rtc_role_v2');
     }
 
-    // Sync dark mode toggle UI state with the saved theme
-    // (restoreTheme() runs before DOMContentLoaded, so toggles must be updated here)
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const pendingJson = sessionStorage.getItem('rtc_pending_reg');
+    if (pendingJson) {
+      try {
+        const pending = JSON.parse(pendingJson);
+        sessionStorage.removeItem('rtc_pending_reg');
+        if (pending.name) {
+          const user = store.users.find(u => u.role === 'student') || store.users[0];
+          if (user) {
+            user.name = pending.name;
+            user.phone = pending.phone;
+            user.branch = pending.address;
+            if (pending.avatar) user.avatar = pending.avatar;
+            save();
+          }
+        }
+      } catch(e) {}
+    }
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark' || document.documentElement.classList.contains('dark');
     ['tog-dark', 'tog-backup-dark'].forEach(function (id) {
       var el = document.getElementById(id);
       if (!el) return;
@@ -2937,15 +3158,24 @@
       el.classList.toggle('off', !isDark);
     });
 
-    // Auto-advance splash after 2s
     setTimeout(function () {
-      if (currentRole) {
+      const onboarded = localStorage.getItem('rtc_onboarding_done');
+      if (onboarded && currentRole && store.users && store.users.length > 0) {
         const homes = { student: 's-home', volunteer: 'v-home', admin: 'a-home' };
-        navigate(homes[currentRole] || 'login');
+        navigate(homes[currentRole] || 'onboarding');
       } else {
-        navigate('login');
+        navigate('onboarding');
       }
-    }, 2000);
+    }, 1500);
   });
+
+  window.resetAppData = function() {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch(e) {}
+    showToast('تم مسح الذاكرة المؤقتة!', 'info');
+    setTimeout(() => window.location.reload(), 300);
+  };
 
 })();
