@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   RTC v10 — Native bridge (Capacitor)
+   RTC v100 — Native bridge (Capacitor)
    ───────────────────────────────────────────────────────────────────
    كل شيء هنا "no-op" آمن على الويب. لا يوجد أي اعتماد صلب على
    Capacitor: لو التطبيق اشتغل في متصفح عادي كل الدوال ترجع بهدوء.
@@ -115,6 +115,38 @@
     return false;
   }
 
+  /* ─────────── Secure system browser (OAuth / trusted public pages) ─────────── */
+  async function openBrowser(url) {
+    if (!/^https:\/\//i.test(String(url || ''))) throw new Error('رابط غير آمن');
+    var B = plugin('Browser');
+    if (B && B.open) {
+      await B.open({ url: String(url), presentationStyle: 'popover', toolbarColor: '#12358f' });
+      return true;
+    }
+    w.location.assign(String(url));
+    return true;
+  }
+
+  /* ─────────── QR scanner (native camera, with web fallback) ─────────── */
+  async function scanQrCode() {
+    var scanner = w.RTCBarcode && w.RTCBarcode.CapacitorBarcodeScanner;
+    if (!scanner || !scanner.scanBarcode) throw new Error('ماسح QR غير متاح على هذا الجهاز');
+    var result = await scanner.scanBarcode({
+      hint: 0,
+      scanInstructions: 'وجّه الكاميرا إلى رمز حضور RTC',
+      scanButton: false,
+      scanText: 'امسح الرمز',
+      cameraDirection: 1,
+      scanOrientation: 3,
+      cancelButtonAccessibilityLabel: 'إلغاء المسح',
+      torchButtonOnAccessibilityLabel: 'إطفاء الفلاش',
+      torchButtonOffAccessibilityLabel: 'تشغيل الفلاش',
+      android: { scanningLibrary: 'zxing' },
+      web: { showCameraSelection: true, scannerFPS: 12 }
+    });
+    return result && result.ScanResult ? String(result.ScanResult) : '';
+  }
+
   /* ─────────── Network banner ─────────── */
   function ensureBanner() {
     var el = document.getElementById('net-banner');
@@ -170,19 +202,17 @@
 
   /* ─────────── Deep links (OAuth return) ─────────── */
   function handleDeepLink(url) {
-    if (!url) return;
-    var idx = -1;
-    var i = String(url).indexOf('#');
-    var q = String(url).indexOf('?');
-    idx = i !== -1 ? i : q;
-    if (idx === -1) return;
-    var frag = String(url).slice(idx + 1);
-    if (frag.indexOf('access_token=') === -1 && frag.indexOf('code=') === -1) return;
+    if (!url || String(url).indexOf(APP_SCHEME) !== 0) return;
+    var raw = String(url);
+    if (raw.indexOf('code=') === -1 && raw.indexOf('error=') === -1) return;
     try {
-      /* نمرّر الجزء للتطبيق ليكمل استرجاع الجلسة عبر supabase-js. */
-      w.location.hash = '#' + frag;
-      if (w.RTCApi && w.RTCApi.recoverHashSession) {
-        w.RTCApi.recoverHashSession().catch(function () {});
+      var B = plugin('Browser');
+      if (B && B.close) B.close().catch(function () {});
+      /* PKCE exchange validates state + verifier inside the original WebView. */
+      if (w.RTCApi && w.RTCApi.recoverUrlSession) {
+        w.RTCApi.recoverUrlSession(raw).catch(function (err) {
+          if (w.RTCUI) w.RTCUI.toast((err && err.message) || 'تعذّر إكمال تسجيل الدخول', 'err');
+        });
       }
     } catch (e) {}
   }
@@ -199,18 +229,115 @@
   }
 
   /* ─────────── OAuth redirect ─────────── */
-  /* على الأصل: سكيم التطبيق. على الويب: رابط GitHub Pages الرسمي.
-     استثناء وحيد للتطوير المحلي حتى يظل `npm run dev` قابلاً للاختبار. */
+  /* Native returns to the app scheme. Web returns to its current deployment;
+     Supabase's Redirect URL allowlist remains the server-side authority. */
   function oauthRedirect() {
     if (_native) return APP_SCHEME;
-    var host = '';
-    try { host = String(w.location.hostname || ''); } catch (e) {}
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
-      var origin = String(w.location.origin || '').replace(/\/$/, '');
-      var path = w.location.pathname || '/';
-      return path && path !== '/' ? origin + path : origin + '/';
+    var origin = String(w.location.origin || '').replace(/\/$/, '');
+    var pathname = String(w.location.pathname || '/');
+    if (/\.[a-z0-9]+$/i.test(pathname)) pathname = pathname.replace(/[^/]+$/, '');
+    if (!pathname.endsWith('/')) pathname += '/';
+    return origin + pathname;
+  }
+
+  /* ─────────── Push + local course reminders ─────────── */
+  var _pushBound = false;
+  async function registerPushIfAllowed(requestPermission) {
+    if (!_native) return false;
+    var P = plugin('PushNotifications');
+    if (!P) return false;
+    var perm = await P.checkPermissions();
+    if (perm.receive !== 'granted' && requestPermission) perm = await P.requestPermissions();
+    if (perm.receive !== 'granted') return false;
+    await P.register();
+    return true;
+  }
+
+  function bindPushListeners() {
+    if (_pushBound || !_native) return;
+    var P = plugin('PushNotifications');
+    if (!P || !P.addListener) return;
+    _pushBound = true;
+    P.addListener('registration', function (token) {
+      if (token && token.value && w.RTCApi && w.RTCApi.registerPushDevice) {
+        w.RTCApi.registerPushDevice(token.value, platform()).catch(function () {});
+      }
+    });
+    P.addListener('registrationError', function () {
+      if (w.RTCUI) w.RTCUI.toast('تعذّر تفعيل إشعارات الجهاز', 'warn');
+    });
+    P.addListener('pushNotificationReceived', function (notification) {
+      if (w.RTCUI) w.RTCUI.toast((notification && notification.title) || 'لديك تنبيه جديد', 'info', 'ph-bell');
+    });
+    P.addListener('pushNotificationActionPerformed', function (action) {
+      var data = action && action.notification && action.notification.data;
+      var screen = data && data.screen;
+      if (screen && typeof w.push === 'function') {
+        try { w.push(String(screen)); } catch (e) {}
+      }
+    });
+  }
+
+  async function enableNotifications() {
+    bindPushListeners();
+    var granted = await registerPushIfAllowed(true);
+    if (!granted) return false;
+    var L = plugin('LocalNotifications');
+    if (L) {
+      var localPerm = await L.checkPermissions();
+      if (localPerm.display !== 'granted') await L.requestPermissions();
     }
-    return PUBLIC_URL;
+    return true;
+  }
+
+  function reminderId(value) {
+    var str = String(value || 'rtc');
+    var h = 0;
+    for (var i = 0; i < str.length; i++) h = ((h << 5) - h + str.charCodeAt(i)) | 0;
+    return Math.abs(h || 100001) % 2147483646 + 1;
+  }
+
+  async function syncCourseReminders(enrollments) {
+    if (!_native) return false;
+    var L = plugin('LocalNotifications');
+    if (!L) return false;
+    var perm = await L.checkPermissions();
+    if (perm.display !== 'granted') return false;
+    var now = Date.now();
+    var notifications = [];
+    (enrollments || []).forEach(function (row) {
+      var batch = row && row.batches;
+      if (!batch || !batch.starts_at) return;
+      var starts = new Date(batch.starts_at).getTime();
+      var at = starts - 60 * 60 * 1000;
+      if (!Number.isFinite(at) || at <= now) return;
+      var course = batch.courses || {};
+      notifications.push({
+        id: reminderId(batch.id),
+        title: 'محاضرتك بعد ساعة',
+        body: (course.title || batch.name || 'دورة RTC') + (batch.location ? ' — ' + batch.location : ''),
+        schedule: { at: new Date(at), allowWhileIdle: true },
+        extra: { screen: 's-courses', batchId: batch.id }
+      });
+    });
+    if (notifications.length) {
+      notifications = notifications.slice(0, 30);
+      try { await L.cancel({ notifications: notifications.map(function (item) { return { id: item.id }; }) }); } catch (e) {}
+      await L.schedule({ notifications: notifications });
+    }
+    return true;
+  }
+
+  function initPush() {
+    bindPushListeners();
+    registerPushIfAllowed(false).catch(function () {});
+  }
+
+  async function unregisterPush() {
+    var P = plugin('PushNotifications');
+    if (_native && P && P.unregister) {
+      try { await P.unregister(); } catch (e) {}
+    }
   }
 
   /* ─────────── App lifecycle ─────────── */
@@ -248,6 +375,13 @@
     syncStatusBar: syncStatusBar,
     hideSplash: hideSplash,
     share: share,
+    openBrowser: openBrowser,
+    handleDeepLink: handleDeepLink,
+    scanQrCode: scanQrCode,
+    initPush: initPush,
+    unregisterPush: unregisterPush,
+    enableNotifications: enableNotifications,
+    syncCourseReminders: syncCourseReminders,
     isOnline: isOnline,
     setOnline: setOnline,
     onBack: onBack,

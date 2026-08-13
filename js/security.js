@@ -25,6 +25,20 @@
 
   function isUuid(v) { return UUID.test(String(v || '')); }
 
+  function safeUrl(value, fallback) {
+    try {
+      var raw = String(value || '').trim();
+      if (!raw) return fallback || '';
+      if (/^tel:\+?[0-9]{3,15}$/.test(raw)) return raw;
+      var u = new URL(raw, w.location && w.location.origin ? w.location.origin : 'https://rtc.invalid');
+      var localHttp = u.protocol === 'http:' && /^(localhost|127\.0\.0\.1|::1)$/.test(u.hostname);
+      if (u.protocol !== 'https:' && !localHttp) return fallback || '';
+      /* Never allow credentials or lookalike control characters in public links. */
+      if (u.username || u.password || /[\u0000-\u001f\u007f]/.test(raw)) return fallback || '';
+      return u.href;
+    } catch (e) { return fallback || ''; }
+  }
+
   function maskPhone(p) {
     var s = String(p || '');
     if (s.length < 7) return '—';
@@ -48,7 +62,7 @@
   }
 
   function haptic(ms) {
-    /* الجسر الأصلي أولاً (v10)، وإلا اهتزاز الويب */
+    /* الجسر الأصلي أولاً (v100)، وإلا اهتزاز الويب */
     try {
       if (w.RTCNative && typeof w.RTCNative.haptic === 'function') {
         w.RTCNative.haptic((ms || 12) >= 28 ? 'medium' : 'light');
@@ -58,5 +72,5 @@
     try { if (navigator.vibrate) navigator.vibrate(ms || 12); } catch (e2) {}
   }
 
-  w.RTCSec = { esc: esc, safeColor: safeColor, safeIcon: safeIcon, isUuid: isUuid, maskPhone: maskPhone, canAccess: canAccess, haptic: haptic };
+  w.RTCSec = { esc: esc, safeColor: safeColor, safeIcon: safeIcon, safeUrl: safeUrl, isUuid: isUuid, maskPhone: maskPhone, canAccess: canAccess, haptic: haptic };
 })(window);

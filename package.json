@@ -1,19 +1,24 @@
 {
   "name": "rtc-app",
-  "version": "10.0.2",
-  "description": "مسار RTC — نظام متابعة مستفيدي الكورسات المجانية",
+  "version": "100.0.0",
+  "description": "مسار RTC v100 — منصة موحّدة للكورسات والحضور والشهادات على الويب وأندرويد وiPhone",
   "main": "index.html",
   "scripts": {
-    "dev": "npx -y http-server -p 5173",
+    "dev": "npm run build && serve dist -l tcp://0.0.0.0:5173",
     "build": "node scripts/build.js",
-    "serve:dist": "npx serve dist",
-    "cap:add": "npx cap add android && npx cap add ios",
-    "cap:sync": "npm run build && npx cap sync",
+    "test": "node tests/test-login-fix.js && node tests/test-security-v100.js",
+    "test:security": "node tests/test-security-v100.js",
+    "audit": "npm audit --audit-level=moderate",
+    "serve:dist": "serve dist -l tcp://0.0.0.0:5173",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:add": "npm run cap:add:android && npm run cap:add:ios",
+    "cap:sync": "npm run build && npx cap sync && npm run cap:patch",
     "cap:patch": "node scripts/patch-native.js",
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
-    "build:android": "npm run cap:sync && npm run cap:patch && npx cap run android",
-    "build:ios": "npm run cap:sync && npm run cap:patch && npx cap run ios",
+    "build:android": "npm run cap:sync && cd android && ./gradlew bundleRelease",
+    "build:ios": "npm run cap:sync && npx cap open ios",
     "icons": "node generate-icons.js"
   },
   "devDependencies": {
@@ -21,17 +26,33 @@
     "@capacitor/cli": "^8.5.0",
     "@capacitor/core": "^8.5.0",
     "@capacitor/ios": "^8.5.0",
+    "esbuild": "^0.25.9",
     "serve": "^14.2.0",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "tailwindcss": "^3.4.17"
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/barcode-scanner": "^3.1.0",
+    "@capacitor/browser": "^8.0.2",
     "@capacitor/haptics": "^8.0.2",
+    "@capacitor/keyboard": "^8.0.2",
+    "@capacitor/local-notifications": "^8.0.2",
     "@capacitor/network": "^8.0.1",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.2",
-    "@capacitor/status-bar": "^8.0.3"
+    "@capacitor/status-bar": "^8.0.3",
+    "@fontsource/ibm-plex-sans-arabic": "^5.2.6",
+    "@fontsource/inter": "^5.2.6",
+    "@phosphor-icons/web": "^2.1.2",
+    "@supabase/supabase-js": "^2.55.0",
+    "jspdf": "^4.2.1",
+    "qrcode": "^1.5.4"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   مسار RTC v10 — توليد الأيقونات من الشعار الحقيقي rtc_app_logo.png
+   مسار RTC v100 — توليد الأيقونات من الشعار الحقيقي rtc_app_logo.png
    (لم يعد يرسم حرف "R" — المصدر هو ملف الشعار نفسه)
    الاستخدام: npm run icons
    ═══════════════════════════════════════════════════════════════ */
@@ -52,6 +52,25 @@ async function maskable(size) {
     .toBuffer();
 }
 
+async function brandedSplash(width, height) {
+  const min = Math.min(width, height);
+  const logoSize = Math.max(92, Math.round(min * 0.24));
+  const logo = await sharp(SOURCE).resize(logoSize, logoSize, { fit: 'cover' }).png().toBuffer();
+  const fontSize = Math.max(18, Math.round(min * 0.045));
+  const subSize = Math.max(11, Math.round(fontSize * 0.48));
+  const logoTop = Math.round(height / 2 - logoSize * 0.66);
+  const textY = logoTop + logoSize + Math.round(fontSize * 1.35);
+  const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071947"/><stop offset=".55" stop-color="#12358f"/><stop offset="1" stop-color="#00554e"/></linearGradient></defs>
+    <rect width="100%" height="100%" fill="url(#g)"/>
+    <circle cx="${width * 0.12}" cy="${height * 0.12}" r="${min * 0.34}" fill="#3156bd" opacity=".18"/>
+    <circle cx="${width * 0.9}" cy="${height * 0.9}" r="${min * 0.38}" fill="#0aa796" opacity=".14"/>
+    <text x="50%" y="${textY}" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="${fontSize}" font-weight="700" letter-spacing="1">MASAR RTC</text>
+    <text x="50%" y="${textY + fontSize * 1.3}" text-anchor="middle" fill="#c9f5ee" font-family="Arial,sans-serif" font-size="${subSize}" letter-spacing=".6">LEARN · GROW · CREATE IMPACT</text>
+  </svg>`);
+  return sharp(svg).composite([{ input: logo, left: Math.round((width - logoSize) / 2), top: logoTop }]).png().toBuffer();
+}
+
 async function main() {
   if (!fs.existsSync(SOURCE)) {
     console.error('✗ لم يتم العثور على الشعار: rtc_app_logo.png');
@@ -79,7 +98,14 @@ async function main() {
       fs.writeFileSync(path.join(dir, 'ic_launcher_round.png'), png);
       fs.writeFileSync(path.join(dir, 'ic_launcher_foreground.png'), await maskable(size * 2));
     }
-    console.log('  ✓ أيقونات أندرويد (mdpi → xxxhdpi)');
+    const androidSplashDirs = fs.readdirSync(resDir).filter(function (name) { return name.indexOf('drawable') === 0; });
+    for (const name of androidSplashDirs) {
+      const target = path.join(resDir, name, 'splash.png');
+      if (!fs.existsSync(target)) continue;
+      const old = await sharp(target).metadata();
+      fs.writeFileSync(target, await brandedSplash(old.width, old.height));
+    }
+    console.log('  ✓ أيقونات وشاشات بداية أندرويد (mdpi → xxxhdpi)');
   } else {
     console.log('  • أندرويد غير مضاف (npx cap add android) — تم التخطي');
   }
@@ -115,7 +141,12 @@ async function main() {
       info: { version: 1, author: 'xcode' }
     };
     fs.writeFileSync(path.join(iosDir, 'Contents.json'), JSON.stringify(contents, null, 2));
-    console.log('  ✓ أيقونات iOS + Contents.json');
+    const splashDir = path.join(ROOT, 'ios', 'App', 'App', 'Assets.xcassets', 'Splash.imageset');
+    for (const splashName of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+      const target = path.join(splashDir, splashName);
+      if (fs.existsSync(target)) fs.writeFileSync(target, await brandedSplash(2732, 2732));
+    }
+    console.log('  ✓ أيقونات وشاشات بداية iOS + Contents.json');
   } else {
     console.log('  • iOS غير مضاف (npx cap add ios) — تم التخطي');
   }

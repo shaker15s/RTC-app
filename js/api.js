@@ -23,8 +23,19 @@
     return unwrap(res);
   }
 
-  var cache = { courses: null, batches: null, branches: null, ts: 0 };
-  function invalidate() { cache.courses = cache.batches = cache.branches = null; cache.ts = 0; }
+  var cache = { courses: null, batches: null, branches: null, committees: null, ts: 0 };
+  var PUBLIC_CACHE_PREFIX = 'rtc_public_v100_';
+  function readPublicCache(key) {
+    try {
+      var value = JSON.parse(w.localStorage.getItem(PUBLIC_CACHE_PREFIX + key) || 'null');
+      if (!value || !Array.isArray(value.data)) return null;
+      return value.data;
+    } catch (e) { return null; }
+  }
+  function writePublicCache(key, data) {
+    try { w.localStorage.setItem(PUBLIC_CACHE_PREFIX + key, JSON.stringify({ savedAt: Date.now(), data: data })); } catch (e) {}
+  }
+  function invalidate() { cache.courses = cache.batches = cache.branches = cache.committees = null; cache.ts = 0; _seatCache = {}; }
 
   async function getSession() {
     var client = await sbReady();
@@ -45,34 +56,56 @@
     return origin + path;
   }
 
-  async function recoverHashSession() {
+  async function recoverUrlSession(callbackUrl) {
     var client = await sbReady();
     if (!client) return null;
-    var raw = String(w.location.hash || '').replace(/^#/, '');
-    if (!raw || raw.indexOf('access_token=') === -1) return null;
-    var params = new URLSearchParams(raw);
-    var access = params.get('access_token');
-    var refresh = params.get('refresh_token') || '';
-    if (!access) return null;
-    var res = await client.auth.setSession({ access_token: access, refresh_token: refresh });
-    try { w.history.replaceState(null, '', w.location.pathname + w.location.search); } catch (e) {}
+    var url = String(callbackUrl || w.location.href || '');
+    var query = '';
+    try {
+      var parsed = new URL(url);
+      query = parsed.search || '';
+      if (!query && parsed.hash) query = '?' + parsed.hash.replace(/^#/, '');
+    } catch (e) {
+      query = String(w.location.search || '') || ('?' + String(w.location.hash || '').replace(/^#/, ''));
+    }
+    var params = new URLSearchParams(query.replace(/^\?/, ''));
+    var code = params.get('code');
+    var authError = params.get('error_description') || params.get('error');
+    if (authError) throw new Error(authError);
+    if (!code) return null;
+    /* Supabase validates state and the locally-held PKCE verifier. */
+    var res = await client.auth.exchangeCodeForSession(code);
     if (res.error) throw res.error;
+    try {
+      if (!(w.RTCNative && w.RTCNative.isNative && w.RTCNative.isNative())) {
+        w.history.replaceState(null, '', w.location.pathname);
+      }
+    } catch (e2) {}
     return res.data && res.data.session;
   }
+
+  /* Backward-compatible name used by older native builds; PKCE only in v100. */
+  function recoverHashSession() { return recoverUrlSession(w.location.href); }
 
   async function signInGoogle() {
     var client = await sbReady();
     if (!client) throw new Error('تعذّر تحميل مكتبة الدخول. تأكد من الإنترنت وجرّب تاني.');
-    var redirect = authRedirectUrl();
+    var native = !!(w.RTCNative && w.RTCNative.isNative && w.RTCNative.isNative());
     var res = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: redirect,
-        skipBrowserRedirect: false,
-        queryParams: { prompt: 'select_account' }
+        redirectTo: authRedirectUrl(),
+        skipBrowserRedirect: native,
+        queryParams: { prompt: 'select_account', access_type: 'offline' }
       }
     });
     if (res.error) throw res.error;
+    if (native) {
+      if (!res.data || !res.data.url) throw new Error('تعذّر إنشاء رابط الدخول الآمن');
+      if (!w.RTCNative.openBrowser) throw new Error('متصفح تسجيل الدخول غير متاح');
+      await w.RTCNative.openBrowser(res.data.url);
+    }
+    return res.data;
   }
 
   async function signOut() {
@@ -82,15 +115,24 @@
   async function fetchMyProfile() {
     var session = await getSession();
     if (!session || !session.user) return null;
-    var res = await sb().from('profiles')
-      .select('*, branches(id, slug, name_ar, name_en, city, address, facebook_url, whatsapp, hotline)')
-      .eq('id', session.user.id)
-      .maybeSingle();
-    if (res.error) throw res.error;
-    var p = res.data;
+    var p = null;
+    try {
+      /* v100: returns only the caller's PII; direct profile SELECT is column-scoped. */
+      p = await rpc('get_my_profile');
+    } catch (e) {
+      /* Temporary compatibility with v9 until the v100 migration is applied. */
+      var res = await sb().from('profiles')
+        .select('*, branches(id, slug, name_ar, name_en, city, address, facebook_url, whatsapp, hotline)')
+        .eq('id', session.user.id)
+        .maybeSingle();
+      if (res.error) throw res.error;
+      p = res.data;
+      if (p) {
+        var badges = await sb().from('student_badges').select('badge_id').eq('student_id', session.user.id);
+        p.badge_ids = (badges.data || []).map(function (b) { return b.badge_id; });
+      }
+    }
     if (!p) return null;
-    var badges = await sb().from('student_badges').select('badge_id').eq('student_id', session.user.id);
-    p.badge_ids = (badges.data || []).map(function (b) { return b.badge_id; });
     p.branch_name = (p.branches && (p.branches.name_ar || p.branches.name_en)) || '';
     p.via_google = true;
     return p;
@@ -108,9 +150,11 @@
       dark_mode: patch.dark_mode
     };
     Object.keys(allowed).forEach(function (k) { if (allowed[k] === undefined) delete allowed[k]; });
-    var res = await sb().from('profiles').update(allowed).eq('id', session.user.id).select('*, branches(id, slug, name_ar, facebook_url, whatsapp, hotline, address, city)');
+    /* Do not request PII back through table SELECT; refresh via caller-bound RPC. */
+    var res = await sb().from('profiles').update(allowed).eq('id', session.user.id);
     if (res.error) throw res.error;
-    if (res.data && res.data.length) return res.data[0];
+    var updated = await fetchMyProfile();
+    if (updated) return updated;
     /* حساب بدون صف في profiles (اتسجّل قبل تفعيل الـ trigger مثلاً).
        ensure_my_profile ينشئ/يحدّث الصف بأمان من السيرفر ثم نعيد الجلب كاملاً. */
     await rpc('ensure_my_profile', {
@@ -125,21 +169,57 @@
 
   async function fetchBranches(force) {
     if (cache.branches && !force) return cache.branches;
-    var res = await sb().from('branches').select('*').eq('is_active', true).order('sort_order');
-    cache.branches = unwrap(res, []) || [];
-    return cache.branches;
+    try {
+      var client = await sbReady();
+      var res = await client.from('branches').select('*').eq('is_active', true).order('sort_order');
+      cache.branches = unwrap(res, []) || [];
+      writePublicCache('branches', cache.branches);
+      return cache.branches;
+    } catch (e) {
+      cache.branches = readPublicCache('branches') || ((w.RTCContent && w.RTCContent.branchFallback) || []);
+      if (cache.branches.length) return cache.branches;
+      throw e;
+    }
+  }
+
+  async function fetchVolunteerCommittees(force) {
+    if (cache.committees && !force) return cache.committees;
+    try {
+      var client = await sbReady();
+      var res = await client.from('volunteer_committees').select('id, slug, name_ar, icon, description, roles, branch_id, is_accepting, application_url, source_url, data_status').eq('is_active', true).order('name_ar');
+      cache.committees = unwrap(res, []) || [];
+      writePublicCache('committees', cache.committees);
+      return cache.committees;
+    } catch (e) {
+      var saved = readPublicCache('committees');
+      if (saved) { cache.committees = saved; return saved; }
+      var fallback = (w.RTCContent && w.RTCContent.volunteerTracks) || [];
+      cache.committees = fallback;
+      return fallback;
+    }
   }
 
   async function fetchCourses(force, branchId) {
-    var q = sb().from('courses').select('*, branches(name_ar, slug)').eq('is_active', true).order('created_at');
-    if (branchId) q = q.eq('branch_id', branchId);
-    var res = await q;
-    var list = unwrap(res, []) || [];
-    if (!branchId) cache.courses = list;
-    return list;
+    if (cache.courses && !force && !branchId) return cache.courses;
+    try {
+      var client = await sbReady();
+      var q = client.from('courses').select('*, branches(name_ar, slug)').eq('is_active', true).order('created_at');
+      if (branchId) q = q.eq('branch_id', branchId);
+      var res = await q;
+      var list = unwrap(res, []) || [];
+      if (!branchId) { cache.courses = list; writePublicCache('courses', list); }
+      return list;
+    } catch (e) {
+      if (!branchId) {
+        var saved = readPublicCache('courses');
+        if (saved) { cache.courses = saved; return saved; }
+      }
+      throw e;
+    }
   }
 
   async function fetchBatches(force, branchId) {
+    if (cache.batches && !force && !branchId) return cache.batches;
     var q = sb().from('batches')
       .select('*, courses(id, title, category, icon, color, sessions_count, max_students, description, start_date, interview_date, level), branches(name_ar, slug), profiles!instructor_id(full_name)')
       .eq('is_active', true)
@@ -155,7 +235,7 @@
     var session = await getSession();
     if (!session) return [];
     var res = await sb().from('enrollments')
-      .select('*, batches(id, name, schedule, branch_id, sessions_done, courses(id, title, category, icon, color, sessions_count, description), branches(name_ar))')
+      .select('*, batches(id, name, schedule, branch_id, sessions_done, starts_at, ends_at, timezone, delivery_mode, location, room, meeting_url, courses(id, title, category, icon, color, sessions_count, description), branches(name_ar))')
       .eq('student_id', session.user.id)
       .order('joined_at', { ascending: false });
     return unwrap(res, []) || [];
@@ -192,10 +272,15 @@
   }
 
   async function fetchAllProfiles() {
-    var res = await sb().from('profiles')
-      .select('id, full_name, role, status, email, phone, points, branch_id, avatar_url, created_at, branches(name_ar)')
-      .order('created_at', { ascending: false });
-    return unwrap(res, []) || [];
+    try {
+      return (await rpc('admin_list_profiles')) || [];
+    } catch (e) {
+      /* v9 compatibility; v100 revokes direct PII reads after migration. */
+      var res = await sb().from('profiles')
+        .select('id, full_name, role, status, email, phone, points, branch_id, avatar_url, created_at, branches(name_ar)')
+        .order('created_at', { ascending: false });
+      return unwrap(res, []) || [];
+    }
   }
 
   async function fetchNotifications() {
@@ -256,10 +341,16 @@
 
   async function fetchAnalyticsBundle() {
     var client = sb();
+    var isAdmin = !!(w.CURRENT_PROFILE && w.CURRENT_PROFILE.role === 'admin');
+    var profilesPromise = isAdmin
+      ? fetchAllProfiles().then(function (data) { return { data: data }; })
+      : client.from('profiles').select('id, full_name, role, branch_id, points, created_at, status');
+    var batchQuery = client.from('batches').select('id, name, branch_id, sessions_done, schedule, is_active').eq('is_active', true);
+    if (!isAdmin && w.CURRENT_PROFILE && w.CURRENT_PROFILE.role === 'volunteer') batchQuery = batchQuery.eq('instructor_id', w.CURRENT_PROFILE.id);
     var pack = await Promise.all([
-      client.from('profiles').select('id, full_name, role, branch_id, points, created_at, email, status'),
+      profilesPromise,
       client.from('courses').select('id, title, is_active').eq('is_active', true),
-      client.from('batches').select('id, name, branch_id, sessions_done, schedule, is_active').eq('is_active', true),
+      batchQuery,
       client.from('certs').select('id'),
       client.from('attendance').select('id, status, created_at'),
       client.from('enrollments').select('id')
@@ -279,6 +370,9 @@
   async function seatCounts(batchIds) {
     var ids = (batchIds || []).filter(Boolean);
     if (!ids.length) return {};
+    if (ids.every(function (id) { return _seatCache[id]; })) {
+      var cached = {}; ids.forEach(function (id) { cached[id] = _seatCache[id]; }); return cached;
+    }
     var out = {};
     try {
       var rows = await rpc('batch_seat_counts', { p_batch_ids: ids });
@@ -304,7 +398,7 @@
   async function uploadAvatar(file) {
     var session = await getSession();
     if (!session) throw new Error('auth required');
-    if (!file || file.size > 1024 * 1024) throw new Error('الصورة يجب أن تكون أقل من 1 ميجا');
+    if (!file || file.size > 8 * 1024 * 1024) throw new Error('اختر صورة أقل من 8 ميجا؛ سنضغطها تلقائيًا');
     if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error('صيغة الصورة غير مدعومة');
     var blob = await compressImage(file, 256);
     var path = session.user.id + '/avatar.webp';
@@ -318,7 +412,10 @@
     var session = await getSession();
     if (!session) throw new Error('auth required');
     if (!file || file.size > 4 * 1024 * 1024) throw new Error('الملف أكبر من 4 ميجا');
-    var ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+    var allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (allowedTypes.indexOf(String(file.type || '').toLowerCase()) === -1) throw new Error('ارفع PDF أو صورة JPG/PNG/WEBP فقط');
+    var extByType = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+    var ext = extByType[String(file.type).toLowerCase()];
     var path = session.user.id + '/' + Date.now() + '.' + ext;
     var up = await sb().storage.from('excuses').upload(path, file, { upsert: false });
     if (up.error) throw up.error;
@@ -370,21 +467,34 @@
     return unwrap(res);
   }
 
+  async function updateVolunteerCommittee(id, payload) {
+    var allowed = {
+      name_ar: payload.name_ar,
+      description: payload.description,
+      roles: payload.roles,
+      is_accepting: payload.is_accepting,
+      application_url: payload.application_url,
+      data_status: payload.data_status
+    };
+    Object.keys(allowed).forEach(function (key) { if (allowed[key] === undefined) delete allowed[key]; });
+    var res = await sb().from('volunteer_committees').update(allowed).eq('id', id);
+    if (res.error) throw res.error;
+    cache.committees = null;
+  }
+
   async function updateBranch(id, payload) {
     if (!w.CURRENT_PROFILE || w.CURRENT_PROFILE.role !== 'admin') throw new Error('للمشرف فقط');
-    // branches have SELECT for all; updates go through a privileged path —
-    // admin uses the table only if we add a policy. Safer: keep facebook/whatsapp
-    // edits as a dedicated RPC later. For now admin UPDATE is not granted.
-    throw new Error('تعديل الفروع يتم من لوحة Supabase حالياً');
+    await rpc('update_branch_directory', { p_branch_id: id, p_payload: payload || {} });
+    cache.branches = null;
   }
 
   w.RTCApi = {
     rpc: rpc, invalidate: invalidate, getSession: getSession,
     signInGoogle: signInGoogle, signOut: signOut,
-    recoverHashSession: recoverHashSession, authRedirectUrl: authRedirectUrl,
+    recoverHashSession: recoverHashSession, recoverUrlSession: recoverUrlSession, authRedirectUrl: authRedirectUrl,
     seatCounts: seatCounts,
     fetchMyProfile: fetchMyProfile, updateMyProfile: updateMyProfile,
-    fetchBranches: fetchBranches, fetchCourses: fetchCourses, fetchBatches: fetchBatches,
+    fetchBranches: fetchBranches, fetchVolunteerCommittees: fetchVolunteerCommittees, fetchCourses: fetchCourses, fetchBatches: fetchBatches,
     fetchMyEnrollments: fetchMyEnrollments, fetchMyBatches: fetchMyBatches,
     fetchBatchStudents: fetchBatchStudents, fetchAllProfiles: fetchAllProfiles,
     fetchNotifications: fetchNotifications, markNotifRead: markNotifRead, unreadCount: unreadCount,
@@ -392,7 +502,7 @@
     fetchExcuses: fetchExcuses, fetchAnalyticsBundle: fetchAnalyticsBundle,
     uploadAvatar: uploadAvatar, uploadExcuseFile: uploadExcuseFile,
     createCourse: createCourse, updateCourse: updateCourse, softDeleteCourse: softDeleteCourse,
-    createBatch: createBatch, updateBranch: updateBranch,
+    createBatch: createBatch, updateBranch: updateBranch, updateVolunteerCommittee: updateVolunteerCommittee,
     joinBatch: function (id) { return rpc('join_batch', { p_batch_id: id }); },
     startSession: function (id, title) { return rpc('start_session', { p_batch_id: id, p_title: title || null }); },
     checkIn: function (code) { return rpc('student_check_in', { p_code: code }); },
@@ -412,6 +522,14 @@
       return rpc('broadcast_notice', { p_scope: scope, p_scope_id: scopeId || null, p_type: type, p_title: title, p_message: message });
     },
     addNote: function (sid, body) { return rpc('add_private_note', { p_student_id: sid, p_body: body }); },
-    claimSocial: function () { return rpc('claim_social_badge'); }
+    claimSocial: function () { return rpc('claim_social_badge'); },
+    disablePushDevices: function () { return rpc('disable_my_push_devices'); },
+    registerPushDevice: function (token, platform) {
+      return rpc('register_push_device', {
+        p_token: token,
+        p_platform: platform,
+        p_version: (w.RTC_CONFIG && w.RTC_CONFIG.version) || '100.0.0'
+      });
+    }
   };
 })(window);

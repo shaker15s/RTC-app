@@ -5,45 +5,50 @@
   "bundledWebRuntime": false,
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 3000,
+      "launchShowDuration": 1800,
       "launchAutoHide": false,
-      "backgroundColor": "#f7f9fb",
+      "backgroundColor": "#071947",
       "androidSplashResourceName": "splash",
-      "showSpinner": false
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": true
     },
     "StatusBar": {
       "style": "DEFAULT",
-      "backgroundColor": "#f7f9fb"
+      "backgroundColor": "#f6f8fc",
+      "overlaysWebView": false
     },
     "Keyboard": {
       "resize": "body",
-      "resizeOnFullScreen": true
+      "resizeOnFullScreen": true,
+      "style": "DARK"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
     },
     "LocalNotifications": {
-      "smallIcon": "ic_stat_icon_config_sample",
-      "iconColor": "#00288e"
+      "smallIcon": "ic_stat_rtc",
+      "iconColor": "#12358f"
     }
   },
   "android": {
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false,
-    "appendUserAgent": "MasarRTC/1.0"
+    "appendUserAgent": "MasarRTC/100.0.0",
+    "backgroundColor": "#f6f8fc",
+    "loggingBehavior": "production",
+    "captureInput": true
   },
   "ios": {
     "contentInset": "automatic",
-    "allowsLinkPreview": false
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "backgroundColor": "#f6f8fc",
+    "preferredContentMode": "mobile"
   },
   "server": {
     "androidScheme": "https",
     "iosScheme": "https",
-    "allowNavigation": [
-      "jwhedqmszbdougsqqmhv.supabase.co",
-      "*.supabase.co",
-      "accounts.google.com",
-      "*.google.com",
-      "*.googleusercontent.com",
-      "shaker15s.github.io",
-      "*.github.io"
-    ]
+    "cleartext": false
   }
 }

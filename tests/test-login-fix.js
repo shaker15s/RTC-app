@@ -57,8 +57,9 @@ windowShim.window = windowShim;
 windowShim.document = documentShim;
 windowShim.localStorage = localStorageShim;
 
+const vmConsole = Object.assign({}, console, { warn() {}, error() {} });
 const ctx = vm.createContext(Object.assign(windowShim, {
-  console, setTimeout, clearTimeout, requestAnimationFrame(fn) { return 0; },
+  console: vmConsole, setTimeout, clearTimeout, requestAnimationFrame(fn) { return 0; },
   performance: { now() { return 0; } },
   URLSearchParams, Promise, JSON, Math, Date, Array, Object, String, Number, Boolean, RegExp, Error, TypeError
 }));
@@ -146,31 +147,26 @@ const humanError = vm.runInContext('window.RTCUI.humanError', ctx);
 
   console.log('\n[4] updateMyProfile — الإصلاح الذاتي لصف مفقود:');
   load('js/api.js');
-  /* عميل supabase وهمي: update يرجع 0 صفوف، rpc يسجل الاستدعاء، ثم الجلب يرجع الملف */
+  /* v100: التحديث لا يطلب PII من الجدول؛ get_my_profile هو مسار القراءة الوحيد. */
   vm.runInContext(`
     globalThis.__calls = { rpc: [], updated: false };
-    var fakeProfile = { id: 'u-1', full_name: 'أحمد محمد علي', phone: '01012345678', role: 'student', status: 'active' };
+    globalThis.__profileExists = false;
+    var fakeProfile = { id: 'u-1', full_name: 'أحمد محمد علي', phone: '01012345678', role: 'student', status: 'active', badge_ids: [] };
     window.supabaseClient = {
       auth: { getSession: async function () { return { data: { session: { user: { id: 'u-1' } } } }; } },
-      from: function (table) {
+      from: function () {
         var chain = {};
         chain.select = function () { return chain; };
         chain.eq = function () { return chain; };
         chain.update = function () { globalThis.__calls.updated = true; return chain; };
         chain.order = function () { return chain; };
-        chain.maybeSingle = async function () {
-          return { data: table === 'profiles' ? Object.assign({ branches: null }, fakeProfile) : null, error: null };
-        };
-        chain.single = async function () { return { data: fakeProfile, error: null }; };
-        chain.then = function (resolve) {
-          /* تحديث يرجع 0 صفوف — صف المستخدم مفقود */
-          if (table === 'profiles') return resolve({ data: [], error: null });
-          return resolve({ data: [], error: null });
-        };
+        chain.then = function (resolve) { return resolve({ data: [], error: null }); };
         return chain;
       },
       rpc: async function (name, args) {
         globalThis.__calls.rpc.push({ name: name, args: args });
+        if (name === 'ensure_my_profile') { globalThis.__profileExists = true; return { data: null, error: null }; }
+        if (name === 'get_my_profile') return { data: globalThis.__profileExists ? fakeProfile : null, error: null };
         return { data: null, error: null };
       }
     };
@@ -178,26 +174,21 @@ const humanError = vm.runInContext('window.RTCUI.humanError', ctx);
   const RTCApi = vm.runInContext('window.RTCApi', ctx);
   const out = await RTCApi.updateMyProfile({ full_name: 'أحمد محمد علي', phone: '01012345678', branch_id: null, lang: undefined });
   const calls = vm.runInContext('__calls', ctx);
-  check('استُدعي ensure_my_profile للإصلاح الذاتي', calls.rpc.length === 1 && calls.rpc[0].name === 'ensure_my_profile', JSON.stringify(calls.rpc));
-  check('مرّر الاسم والهاتف صح', calls.rpc.length === 1 && calls.rpc[0].args.p_full_name === 'أحمد محمد علي' && calls.rpc[0].args.p_phone === '01012345678');
+  const ensureCall = calls.rpc.find(function (call) { return call.name === 'ensure_my_profile'; });
+  check('استُدعي ensure_my_profile للإصلاح الذاتي', !!ensureCall, JSON.stringify(calls.rpc));
+  check('مرّر الاسم والهاتف صح', ensureCall && ensureCall.args.p_full_name === 'أحمد محمد علي' && ensureCall.args.p_phone === '01012345678');
+  check('القراءة تمت عبر get_my_profile', calls.rpc.filter(function (call) { return call.name === 'get_my_profile'; }).length >= 2);
   check('أعاد الملف الكامل بعد الجلب', out && out.id === 'u-1' && out.role === 'student', JSON.stringify(out && out.id));
 
-  console.log('\n[5] مسار النجاح العادي (صف موجود) لا يستدعي الـ RPC:');
+  console.log('\n[5] مسار النجاح العادي (صف موجود) لا يستدعي self-heal:');
   vm.runInContext(`
     __calls.rpc = [];
-    var p = { id: 'u-1', role: 'student', status: 'active' };
-    window.supabaseClient.from = function () {
-      var chain = {};
-      chain.select = function () { return chain; };
-      chain.eq = function () { return chain; };
-      chain.update = function () { return chain; };
-      chain.then = function (resolve) { return resolve({ data: [p], error: null }); };
-      return chain;
-    };
+    __profileExists = true;
   `, ctx);
   const out2 = await RTCApi.updateMyProfile({ full_name: 'أحمد محمد علي' });
   const calls2 = vm.runInContext('__calls', ctx);
-  check('لا استدعاء إضافي', calls2.rpc.length === 0);
+  check('لا يستدعي ensure_my_profile', !calls2.rpc.some(function (call) { return call.name === 'ensure_my_profile'; }));
+  check('يجلب النتيجة عبر get_my_profile', calls2.rpc.some(function (call) { return call.name === 'get_my_profile'; }));
   check('أعاد الصف المحدّث', out2 && out2.id === 'u-1');
 
   /* خطأ فريد الهاتف يتصاعد الآن بدل ابتلاعه في الواجهة */

@@ -129,12 +129,9 @@
     }
   };
 
+  /* v100 ships a complete Arabic product surface. Keep direction consistent until
+     every operational/admin string has a reviewed English translation. */
   var lang = 'ar';
-  try {
-    var saved = localStorage.getItem('rtc_pref_lang');
-    if (saved) saved = JSON.parse(saved);
-    if (saved === 'en' || saved === 'ar') lang = saved;
-  } catch (e) {}
 
   function t(key) {
     return (STR[lang] && STR[lang][key]) || (STR.ar[key]) || key;
