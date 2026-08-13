@@ -20,7 +20,8 @@
     "build:android": "npm run cap:sync && cd android && ./gradlew bundleRelease",
     "build:ios": "npm run cap:sync && npx cap open ios",
     "icons": "node generate-icons.js",
-    "firebase:check": "node scripts/validate-firebase.js"
+    "firebase:check": "node scripts/validate-firebase.js",
+    "pages:bundle": "npm run build && node scripts/export-pages-root.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",

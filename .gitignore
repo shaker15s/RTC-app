@@ -23,6 +23,8 @@ dist/
 build/
 styles.css
 *.min.js
+# Runtime bundles are committed so the existing root-based GitHub Pages workflow works.
+!assets/vendor/*.min.js
 
 # Store listing assets are tracked; regenerate icons with: npm run icons
 
