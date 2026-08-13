@@ -12,57 +12,60 @@
 -- ═══════════════ 1) العلاقات (FKs) اللازمة لـ PostgREST embeds ═══════════════
 -- بدون هذه المفاتيح تفشل استعلامات مثل batches?select=courses(...),profiles(...)
 
+-- أولاً: تنظيف أي صفوف يتيمة (تشير لسجل محذوف) وإلا يفشل إنشاء المفتاح.
+UPDATE public.batches  b SET course_id     = NULL
+  WHERE b.course_id     IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.courses  x WHERE x.id = b.course_id);
+UPDATE public.batches  b SET instructor_id = NULL
+  WHERE b.instructor_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.profiles x WHERE x.id = b.instructor_id);
+UPDATE public.batches  b SET branch_id     = NULL
+  WHERE b.branch_id     IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.branches x WHERE x.id = b.branch_id);
+UPDATE public.profiles p SET branch_id     = NULL
+  WHERE p.branch_id     IS NOT NULL AND NOT EXISTS (SELECT 1 FROM public.branches x WHERE x.id = p.branch_id);
+
+DELETE FROM public.enrollments e
+  WHERE e.batch_id   IS NULL OR NOT EXISTS (SELECT 1 FROM public.batches  x WHERE x.id = e.batch_id);
+DELETE FROM public.enrollments e
+  WHERE e.student_id IS NULL OR NOT EXISTS (SELECT 1 FROM public.profiles x WHERE x.id = e.student_id);
+
 DO $$
 BEGIN
   -- batches.course_id → courses.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'batches_course_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'batches_course_id_fkey') THEN
     ALTER TABLE public.batches
       ADD CONSTRAINT batches_course_id_fkey
       FOREIGN KEY (course_id) REFERENCES public.courses(id) ON DELETE CASCADE;
   END IF;
 
   -- batches.instructor_id → profiles.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'batches_instructor_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'batches_instructor_id_fkey') THEN
     ALTER TABLE public.batches
       ADD CONSTRAINT batches_instructor_id_fkey
       FOREIGN KEY (instructor_id) REFERENCES public.profiles(id) ON DELETE SET NULL;
   END IF;
 
   -- batches.branch_id → branches.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'batches_branch_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'batches_branch_id_fkey') THEN
     ALTER TABLE public.batches
       ADD CONSTRAINT batches_branch_id_fkey
       FOREIGN KEY (branch_id) REFERENCES public.branches(id) ON DELETE SET NULL;
   END IF;
 
   -- enrollments.batch_id → batches.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'enrollments_batch_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'enrollments_batch_id_fkey') THEN
     ALTER TABLE public.enrollments
       ADD CONSTRAINT enrollments_batch_id_fkey
       FOREIGN KEY (batch_id) REFERENCES public.batches(id) ON DELETE CASCADE;
   END IF;
 
   -- enrollments.student_id → profiles.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'enrollments_student_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'enrollments_student_id_fkey') THEN
     ALTER TABLE public.enrollments
       ADD CONSTRAINT enrollments_student_id_fkey
       FOREIGN KEY (student_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
   END IF;
 
   -- profiles.branch_id → branches.id
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'profiles_branch_id_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'profiles_branch_id_fkey') THEN
     ALTER TABLE public.profiles
       ADD CONSTRAINT profiles_branch_id_fkey
       FOREIGN KEY (branch_id) REFERENCES public.branches(id) ON DELETE SET NULL;
@@ -231,11 +234,12 @@ BEGIN
   IF p_approve THEN
     -- ترقية لمتطوع فقط. المشرف لا يُمنح من هنا إطلاقاً.
     UPDATE public.profiles SET role = 'volunteer' WHERE id = req.user_id;
-    INSERT INTO public.notifications (user_id, type, title, body)
-    VALUES (req.user_id, 'success', 'تمت ترقيتك', 'صرت متطوعاً في مسار RTC. شكراً لعطائك.');
+    INSERT INTO public.notifications (user_id, title, message, type)
+    VALUES (req.user_id, 'تمت ترقيتك 🎉', 'صرت متطوعاً في مسار RTC. شكراً لعطائك.', 'announcement');
   ELSE
-    INSERT INTO public.notifications (user_id, type, title, body)
-    VALUES (req.user_id, 'info', 'طلب الترقية', COALESCE(p_note, 'لم يُقبل الطلب حالياً.'));
+    INSERT INTO public.notifications (user_id, title, message, type)
+    VALUES (req.user_id, 'بخصوص طلب الترقية',
+            COALESCE(NULLIF(trim(p_note), ''), 'لم يُقبل الطلب حالياً.'), 'announcement');
   END IF;
 
   PERFORM public.write_audit('review_role_request', 'role_requests', p_id::text,

@@ -31,7 +31,6 @@ AS $$
     SELECT en.batch_id, COUNT(*) AS cnt
     FROM public.enrollments en
     WHERE en.batch_id = ANY (p_batch_ids)
-      AND COALESCE(en.status, 'active') = 'active'
     GROUP BY en.batch_id
   ) e ON e.batch_id = b.id
   WHERE b.id = ANY (p_batch_ids)
