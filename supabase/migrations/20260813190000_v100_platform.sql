@@ -223,8 +223,9 @@ BEGIN
 END $$;
 
 -- Aggregate seat counts without exposing the enrollment roster.
--- Keep the legacy v10 OUT signature exactly: dependent clients/functions remain valid.
-CREATE OR REPLACE FUNCTION public.batch_seat_counts(p_batch_ids UUID[])
+-- OUT signatures varied across v10 deployments; PostgreSQL requires a drop first.
+DROP FUNCTION IF EXISTS public.batch_seat_counts(UUID[]);
+CREATE FUNCTION public.batch_seat_counts(p_batch_ids UUID[])
 RETURNS TABLE (batch_id UUID, enrolled INT, capacity INT, seats_left INT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN

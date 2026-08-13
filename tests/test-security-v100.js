@@ -59,7 +59,10 @@ check('public cert output masks the student name', migration.includes('public.ma
 check('new certificate serial uses a full UUID', migration.includes("upper(replace(gen_random_uuid()::text, '-', ''))"));
 check('push tokens have no client table grants', migration.includes('REVOKE ALL ON public.push_devices FROM anon, authenticated'));
 check('sign-out can disable the user device registrations server-side', migration.includes('FUNCTION public.disable_my_push_devices()'));
-check('seat-count RPC preserves the deployed v10 OUT signature', migration.includes('RETURNS TABLE (batch_id UUID, enrolled INT, capacity INT, seats_left INT)'));
+const seatDrop = migration.indexOf('DROP FUNCTION IF EXISTS public.batch_seat_counts(UUID[])');
+const seatCreate = migration.indexOf('CREATE FUNCTION public.batch_seat_counts', seatDrop);
+check('seat-count RPC drops unknown legacy OUT signatures before recreation', seatDrop !== -1 && seatCreate > seatDrop);
+check('seat-count RPC recreates the stable four-column contract', migration.includes('RETURNS TABLE (batch_id UUID, enrolled INT, capacity INT, seats_left INT)'));
 check('upload MIME limits are server-enforced', migration.includes("allowed_mime_types = ARRAY['application/pdf','image/jpeg','image/png','image/webp']"));
 check('volunteer committees are reviewable content, not auth roles', migration.includes('CREATE TABLE IF NOT EXISTS public.volunteer_committees') && migration.includes("'secondary_source',false"));
 check('private notes enforce instructor/student relationship', migration.includes("public.is_instructor_for_student(p_student_id)"));
