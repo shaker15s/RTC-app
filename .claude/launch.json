@@ -4,8 +4,8 @@
     {
       "name": "RTC App",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "-l", "5173", "."],
-      "port": 5173
+      "runtimeArgs": ["serve", "-l", "5174", "."],
+      "port": 5174
     }
   ]
 }

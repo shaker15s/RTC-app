@@ -209,3 +209,23 @@ BEGIN
     WHERE crt.serial_number = p_serial;
 END;
 $$;
+
+-- Alter tables to ensure branch and metadata columns exist
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT 'فرع فيصل — الطوابق (الجيزة)';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT 'فرع فيصل — الطوابق (الجيزة)';
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS cat TEXT;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE public.courses ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS branch TEXT DEFAULT 'فرع فيصل — الطوابق (الجيزة)';
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+-- Seed RTC Faisal courses directly into Supabase
+INSERT INTO public.courses (id, title, cat, category, branch, icon, color, sessions_count, is_active) VALUES
+('11111111-1111-1111-1111-111111111111', 'تطوير تطبيقات الويب Full-Stack (JS & React)', 'برمجة وتكنولوجيا', 'برمجة وتكنولوجيا', 'فرع فيصل — الطوابق (الجيزة)', 'ph-fill ph-code', '#00288e', 10, true),
+('22222222-2222-2222-2222-222222222222', 'التصميم الجرافيكي المتقدم (Photoshop & Illustrator)', 'تصميم وفنون', 'تصميم وفنون', 'فرع فيصل — الطوابق (الجيزة)', 'ph-fill ph-palette', '#7a30d8', 8, true),
+('33333333-3333-3333-3333-333333333333', 'التسويق الرقمي وإدارة حملات السوشيال ميديا', 'تسويق إلكتروني', 'تسويق إلكتروني', 'فرع فيصل — الطوابق (الجيزة)', 'ph-fill ph-megamenu', '#d4af37', 8, true),
+('44444444-4444-4444-4444-444444444444', 'اللغة الإنجليزية للمحادثة وسوق العمل', 'لغات وتواصل', 'لغات وتواصل', 'فرع فيصل — الطوابق (الجيزة)', 'ph-fill ph-translate', '#ba1a1a', 12, true),
+('55555555-5555-5555-5555-555555555555', 'الإكسيل المحاسبي المتقدم Advanced Excel', 'محاسبة وماليات', 'محاسبة وماليات', 'فرع فيصل — الطوابق (الجيزة)', 'ph-fill ph-file-spreadsheet', '#0284c7', 8, true)
+ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, branch = EXCLUDED.branch;

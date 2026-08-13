@@ -22,7 +22,7 @@ icon-512.png
 
 # Internal design/review documents (keep local only, not published)
 RTC-MASTER-REPORT.md
-.claude/plan-10x.md
+.claude/
 
 # Playwright capture dumps (console/page artifacts)
 .playwright-mcp/
