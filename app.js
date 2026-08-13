@@ -234,6 +234,16 @@ async function tryInitGoogle() {
   var statusEl = document.getElementById('g-status');
   var mount = document.getElementById('g-btn-mount');
   if (statusEl) statusEl.innerHTML = '<i class="ph-fill ph-info"></i><span>' + esc(t('googleHint')) + '</span>';
+  var hint = document.getElementById('oauth-origin-hint');
+  if (hint) {
+    var origin = location.origin + '/';
+    hint.innerHTML = '<div class="text-[11px] text-muted leading-relaxed">أضف هذا الرابط في Supabase → Authentication → Redirect URLs ثم اضغط الدخول من نفس التبويب:</div>' +
+      '<button type="button" class="chip text-[11px] mt-1.5 font-mono" id="copy-origin-btn" dir="ltr">' + esc(origin) + '</button>';
+    var copyBtn = document.getElementById('copy-origin-btn');
+    if (copyBtn) copyBtn.onclick = function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(origin).then(function () { toast('تم نسخ الرابط', 'ok'); }).catch(function () {});
+    };
+  }
   if (!mount) return;
   mount.innerHTML = '';
   var btn = document.createElement('button');

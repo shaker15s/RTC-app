@@ -24,12 +24,37 @@
     return res.data && res.data.session;
   }
 
+  function authRedirectUrl() {
+    var origin = String(w.location.origin || '').replace(/\/$/, '');
+    var path = w.location.pathname || '/';
+    if (!path || path === '/') return origin + '/';
+    return origin + path;
+  }
+
+  async function recoverHashSession() {
+    if (!sb()) return null;
+    var raw = String(w.location.hash || '').replace(/^#/, '');
+    if (!raw || raw.indexOf('access_token=') === -1) return null;
+    var params = new URLSearchParams(raw);
+    var access = params.get('access_token');
+    var refresh = params.get('refresh_token') || '';
+    if (!access) return null;
+    var res = await sb().auth.setSession({ access_token: access, refresh_token: refresh });
+    try { w.history.replaceState(null, '', w.location.pathname + w.location.search); } catch (e) {}
+    if (res.error) throw res.error;
+    return res.data && res.data.session;
+  }
+
   async function signInGoogle() {
     if (!sb()) throw new Error('Supabase غير متصل');
-    var redirect = w.location.origin + w.location.pathname;
+    var redirect = authRedirectUrl();
     var res = await sb().auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: redirect, queryParams: { prompt: 'select_account' } }
+      options: {
+        redirectTo: redirect,
+        skipBrowserRedirect: false,
+        queryParams: { prompt: 'select_account' }
+      }
     });
     if (res.error) throw res.error;
   }

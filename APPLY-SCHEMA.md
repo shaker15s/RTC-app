@@ -1,41 +1,42 @@
-# تطبيق السكيمة + إصلاح دخول Google
+# تطبيق السكيمة + دخول Google
 
-## أ) خطأ SQL: `cannot change return type of existing function`
+## أ) SQL — شغّل بالترتيب
 
-الدالة القديمة `verify_certificate` موجودة بشكل مختلف. اعمل بالترتيب:
+1. `supabase/FIX-verify-then-rerun.sql`
+2. `supabase/migrations/20260813120000_production_v9.sql`
 
-1. في SQL Editor الصق وشغّل أولاً ملف:
-   `supabase/FIX-verify-then-rerun.sql`
-   (بيحل خطأ `verify_certificate` وعمود `notifications.read_at` الناقص)
-2. بعد نجاحه، شغّل من جديد الملف الكامل:
-   `supabase/migrations/20260813120000_production_v9.sql`
+## ب) ليه ظهر `Sandbox Not Found`؟
 
-لو حابب تختصر: الملف الكامل الآن فيه `DROP FUNCTION` في أوله — يكفي تعيد تشغيله كاملاً بعد ما تضيف السطرين دول لو نسخت نسخة قديمة.
+ده **مش** مشكلة Git ولا برانش. التغييرات مرفوعة على:
 
-## ب) Google بيرجع على `localhost:3000` (مش التطبيق)
+`https://github.com/shaker15s/RTC-app/tree/arena/019ffa07-rtc-app`
 
-ده إعداد **Site URL** في مشروع Supabase، مش من كود الواجهة.
+الرسالة دي من استضافة Arena/e2b: Google رجّع المتصفح على رابط معاينة **قديم** (`…iw7robcdzs7qk9o0gai7g…`) بعد ما الساندبوكس اتقفل.
 
-1. افتح [Supabase Dashboard](https://supabase.com/dashboard) → مشروعك → **Authentication** → **URL Configuration**.
-2. غيّر **Site URL** إلى رابط المعاينة الحالي، مثلاً:
-   `https://5173-iw7robcdzs7qk9o0gai7g.e2b.app`
-3. في **Redirect URLs** أضف **كل** السطور دي (سطر لكل رابط):
+روابط `*.e2b.app` مؤقتة. متخلّيهاش Site URL دائم في Supabase.
 
-```
-https://5173-iw7robcdzs7qk9o0gai7g.e2b.app
-https://5173-iw7robcdzs7qk9o0gai7g.e2b.app/
-http://localhost:5173
-http://localhost:5173/
-http://127.0.0.1:5173
-http://127.0.0.1:5173/
-http://localhost:3000
-http://localhost:3000/
-```
+### اعمل كده الآن
 
-4. احفظ. ارجع للتطبيق واضغط «تسجيل الدخول بـ Google» من **نفس تبويب المعاينة** (مش من ملف محلي).
+1. افتح التطبيق من المكان اللي هتستخدمه فعلاً:
+   - تشغيل محلي: `http://localhost:5173`
+   - أو أي استضافة ثابتة عندك
+2. انسخ الرابط من **شريط عنوان المتصفح** (نفس التبويب اللي فيه التطبيق).
+3. Supabase → **Authentication** → **URL Configuration**:
+   - **Site URL** = الرابط ده (مثلاً `http://localhost:5173`)
+   - **Redirect URLs** أضف:
+     ```
+     http://localhost:5173
+     http://localhost:5173/
+     http://127.0.0.1:5173
+     http://127.0.0.1:5173/
+     http://localhost:3000
+     http://localhost:3000/
+     ```
+     ولو هتفتح من معاينة Arena، أضف رابط المعاينة **الحالي من شريط العنوان** (مش الرابط القديم).
+4. احفظ، ارجع لنفس تبويب التطبيق، سجّل بـ Google من هناك.
 
-من غير الخطوة دي، Google هيكمّل وSupabase هيرجعك على `localhost:3000` لأن ده الـ Site URL القديم — وده مش التطبيق.
+على شاشة الدخول التطبيق بيعرض الرابط المطلوب نسخه لـ Redirect URLs.
 
-## ج) حساب المشرف
+## ج) المشرف
 
-بعد تطبيق SQL، ادخل بالإيميل `shakerabdallah66@gmail.com`. الـ trigger يثبّته `admin`. باقي الحسابات طلاب. المشرف يرقّي لمتطوع فقط.
+بعد SQL، دخول `shakerabdallah66@gmail.com` يثبّته أدمن. الباقي طلاب.
