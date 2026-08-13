@@ -1,2294 +1,1656 @@
 /* ═══════════════════════════════════════════════════════════════
-   مسار RTC — محرك التطبيق الكامل الإصدار 8.0 PRODUCTION
-   جمعية رسالة — مركز التدريب والتطوير
+   مسار RTC v9.0 — محرك الواجهة
+   الهوية من JWT فقط. الأدوار من السيرفر. الكتابة الحساسة عبر RPC.
    ═══════════════════════════════════════════════════════════════ */
+var CURRENT_USER = null;
+var CURRENT_PROFILE = null;
+var navStack = [];
+var currentScreenId = 'splash';
+var _branches = [];
+var _currentBatch = null;
+var _batchStudents = [];
+var _attendanceState = {};
+var _currentSession = null;
+var _detailCourseId = null;
+var _exploreFilterText = '';
+var _exploreBranchId = '';
+var _authHandled = false;
+var _unread = 0;
 
-/* ─────────────── كتالوج الشارات ─────────────── */
-const BADGES_CATALOG = [
-  { id:'welcome',      name:'أول خطوة',         icon:'ph-fill ph-flag-checkered',    color:'#00288e', desc:'انضممت إلى مسار RTC',              unlock:'انضم للتطبيق' },
-  { id:'firstCourse',  name:'متعلم نشيط',        icon:'ph-fill ph-book-open-text',    color:'#00554e', desc:'انضممت لأول دورة تدريبية',           unlock:'انضم لأول كورس' },
-  { id:'firstAttend',  name:'حاضر فعلاً',        icon:'ph-fill ph-calendar-check',    color:'#0b6e63', desc:'سُجّل حضورك أول مرة',               unlock:'سجّل المتطوع حضورك' },
-  { id:'points100',    name:'جامع النقاط',        icon:'ph-fill ph-coins',             color:'#d4af37', desc:'جمعت ١٠٠ نقطة تحفيزية',             unlock:'اجمع ١٠٠ نقطة' },
-  { id:'streak5',      name:'مثابر',              icon:'ph-fill ph-fire',              color:'#ba1a1a', desc:'حضرت ٥ محاضرات على التوالي',         unlock:'احضر ٥ محاضرات متتالية' },
-  { id:'explorer',     name:'مستكشف',             icon:'ph-fill ph-compass',           color:'#7a30d8', desc:'انضممت لـ ٣ دورات مختلفة',           unlock:'انضم لـ ٣ كورسات' },
-  { id:'graduate',     name:'خريج معتمد',         icon:'ph-fill ph-certificate',       color:'#1e40af', desc:'أتممت أول دورة بنجاح',               unlock:'أكمل كورساً كاملاً' },
-  { id:'social',       name:'نجم سوشيال',         icon:'ph-fill ph-heart',             color:'#a8477a', desc:'شارك التطبيق مع صديق',              unlock:'اشرح للآخرين عن رسالة' },
-  { id:'points500',    name:'بطل النقاط',         icon:'ph-fill ph-trophy',            color:'#854d0e', desc:'جمعت ٥٠٠ نقطة تحفيزية',             unlock:'اجمع ٥٠٠ نقطة' },
+var BADGES_CATALOG = [
+  { id: 'welcome', name: 'أول خطوة', icon: 'ph-fill ph-flag-checkered', color: '#00288e', desc: 'انضممت إلى مسار RTC', unlock: 'أنشئ حسابك' },
+  { id: 'firstCourse', name: 'متعلم نشيط', icon: 'ph-fill ph-book-open-text', color: '#00554e', desc: 'انضممت لأول دورة', unlock: 'انضم لمجموعة' },
+  { id: 'firstAttend', name: 'حاضر فعلاً', icon: 'ph-fill ph-calendar-check', color: '#0b6e63', desc: 'سُجّل حضورك أول مرة', unlock: 'احضر محاضرة' },
+  { id: 'points100', name: 'جامع النقاط', icon: 'ph-fill ph-coins', color: '#d4af37', desc: 'جمعت ١٠٠ نقطة', unlock: 'اجمع ١٠٠ نقطة' },
+  { id: 'streak5', name: 'مثابر', icon: 'ph-fill ph-fire', color: '#ba1a1a', desc: 'حضرت ٥ محاضرات متتالية', unlock: 'سلسلة حضور ٥' },
+  { id: 'explorer', name: 'مستكشف', icon: 'ph-fill ph-compass', color: '#7a30d8', desc: 'انضممت لـ ٣ دورات', unlock: '٣ كورسات' },
+  { id: 'graduate', name: 'خريج معتمد', icon: 'ph-fill ph-certificate', color: '#1e40af', desc: 'أتممت دورة بنجاح', unlock: 'أكمل كورساً' },
+  { id: 'social', name: 'نجم سوشيال', icon: 'ph-fill ph-heart', color: '#a8477a', desc: 'شاركت التطبيق', unlock: 'شارك رابط مسار' },
+  { id: 'points500', name: 'بطل النقاط', icon: 'ph-fill ph-trophy', color: '#854d0e', desc: 'جمعت ٥٠٠ نقطة', unlock: 'اجمع ٥٠٠ نقطة' }
 ];
 
-const FAQ = [
-  { q:'هل الكورسات مجانية فعلاً بدون أي مصاريف خفية؟', a:'نعم، جميع الدورات في مركز رسالة مجانية ١٠٠٪ بالكامل من التسجيل وحتى الحصول على الشهادة.' },
-  { q:'هل أحصل على شهادة معتمدة بعد إتمام الدورة؟', a:'بمجرد تسجيل المتطوع حضورك في جميع المحاضرات، تُصدر شهادة إتمام معتمدة باسمك تلقائياً.' },
-  { q:'ماذا لو فاتتني إحدى المحاضرات؟', a:'تواصل مع المتطوع المسؤول عن مجموعتك لمعرفة إمكانية التعويض في مجموعة أخرى بنفس الفرع.' },
-  { q:'كيف يتم تسجيل الحضور؟', a:'المتطوع المسؤول هو من يسجل حضور الطلاب في نهاية كل محاضرة. لا يمكن للطالب تسجيل حضوره بنفسه.' },
-  { q:'كيف أغيّر الفرع؟', a:'من "الملف الشخصي" اضغط "تعديل" ثم غيّر الفرع، وسيتم تحديثه في قاعدة البيانات.' },
+var FAQ = [
+  { q: 'هل الكورسات مجانية فعلاً؟', a: 'نعم. دورات مركز رسالة مجانية بالكامل من التسجيل حتى الشهادة.' },
+  { q: 'كيف أسجّل حضوري؟', a: 'المتطوع يفتح محاضرة اليوم ويعرض رمز QR. امسحه أو أدخل الرمز من تبويب «تسجيل حضوري». لا يمكن تسجيل حضور نيابةً عن زميل.' },
+  { q: 'فاتتني محاضرة، ماذا أفعل؟', a: 'أرسل طلب عذر من حسابك مع السبب. المتطوع يراجعه وقد يحتسب المحاضرة معذورة.' },
+  { q: 'كيف أصبح متطوعاً؟', a: 'كل الحسابات تبدأ كطلاب. تواصل مع مشرف المركز لترقيتك من لوحة الإدارة.' },
+  { q: 'كيف أتحقق من شهادة؟', a: 'من الشهادات اضغط «تحقق»، أو افتح صفحة التحقق العامة وأدخل الرقم التسلسلي.' }
 ];
 
-/* ─────────────── الحالة العامة ─────────────── */
-let CURRENT_USER = null;       // Supabase auth user
-let CURRENT_PROFILE = null;    // profile from public.profiles
-let navStack = [];
-let currentScreenId = 'splash';
-let pendingOAuthRegistration = false;
+var UI = window.RTCUI;
+var API = window.RTCApi;
+var SEC = window.RTCSec;
+var t = function (k) { return window.RTCi18n ? window.RTCi18n.t(k) : k; };
 
-// Local cache for fetched data
-let _coursesCache = null;
-let _batchesCache = null;
+function toast(m, ty, ic) { UI.toast(m, ty, ic); }
+function esc(s) { return SEC.esc(s); }
+function setEl(id, v) { UI.setEl(id, v); }
 
-const STUDENT_TABS   = ['s-home','s-courses','s-points','s-certs','s-profile'];
-const VOLUNTEER_TABS = ['v-home','v-batches','v-courses','v-profile','s-analytics'];
-const ADMIN_TABS     = ['a-home','a-users','a-courses','a-certs','a-settings','s-analytics'];
-
-/* ═══════════════ XSS Protection ═══════════════ */
-function esc(str) {
-  if (str === null || str === undefined) return '';
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
-
-/* ═══════════════ Toast ═══════════════ */
-function toast(msg, type, icon) {
-  type = type || 'info';
-  const ct = document.getElementById('toast-ct');
-  if (!ct) return;
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  const ic = icon || (type==='ok'?'ph-check-circle':type==='err'?'ph-x-circle':'ph-info');
-  el.innerHTML = `<i class="ph-fill ${ic}"></i><span>${esc(msg)}</span>`;
-  ct.appendChild(el);
-  setTimeout(() => {
-    el.style.transition = 'opacity .35s, transform .35s';
-    el.style.opacity = '0'; el.style.transform = 'translateY(-10px)';
-    setTimeout(() => el.remove(), 350);
-  }, 3200);
-}
-
-/* ═══════════════ Confirm Modal ═══════════════ */
-function showConfirm(title, msg, onYes, opts) {
-  opts = opts || {};
-  let old = document.getElementById('dyn-confirm'); if (old) old.remove();
-  const bg = document.createElement('div');
-  bg.id = 'dyn-confirm'; bg.className = 'modal-bg';
-  bg.innerHTML = `
-    <div class="modal-sheet" style="text-align:center;padding-top:6px">
-      <div class="modal-handle"></div>
-      <div style="width:60px;height:60px;border-radius:50%;background:rgba(186,26,26,.1);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--red);font-size:28px"><i class="ph-fill ph-warning"></i></div>
-      <h3 style="font-size:16px;font-weight:800;margin-bottom:6px">${esc(title)}</h3>
-      <p style="font-size:12.5px;color:var(--mut);margin-bottom:20px;line-height:1.8">${esc(msg)}</p>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-soft btn-mid" style="flex:1" id="dc-cancel">إلغاء</button>
-        <button class="btn btn-danger btn-mid" style="flex:1" id="dc-yes">${esc(opts.yesLabel||'تأكيد')}</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(bg);
-  requestAnimationFrame(() => bg.classList.add('open'));
-  const close = () => { bg.classList.remove('open'); setTimeout(() => bg.remove(), 300); };
-  bg.querySelector('#dc-cancel').onclick = close;
-  bg.querySelector('#dc-yes').onclick = () => { close(); onYes(); };
-  bg.onclick = e => { if (e.target === bg) close(); };
-}
-
-/* ═══════════════ Badge Locked Popup ═══════════════ */
-function showBadgeLocked(badge) {
-  let old = document.getElementById('dyn-badge'); if (old) old.remove();
-  const bg = document.createElement('div');
-  bg.id = 'dyn-badge'; bg.className = 'modal-bg';
-  bg.innerHTML = `
-    <div class="modal-sheet" style="text-align:center;padding-top:6px">
-      <div class="modal-handle"></div>
-      <div style="width:80px;height:80px;border-radius:24px;background:${esc(badge.color)};display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:36px;filter:grayscale(1);opacity:.5"><i class="${esc(badge.icon)}"></i></div>
-      <div style="font-size:12px;color:var(--mut);margin-bottom:4px">🔒 شارة مقفلة</div>
-      <h3 style="font-size:18px;font-weight:800;margin-bottom:6px">${esc(badge.name)}</h3>
-      <p style="font-size:12.5px;color:var(--mut);margin-bottom:8px">${esc(badge.desc)}</p>
-      <div style="background:var(--card-2);border:1px solid var(--line);border-radius:14px;padding:10px 14px;display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--primary)">
-        <i class="ph-fill ph-lightbulb"></i> كيف تحصل عليها: ${esc(badge.unlock)}
-      </div>
-      <button class="btn btn-primary btn-mid w-full mt-4" id="bd-ok">فهمت — سأسعى للحصول عليها!</button>
-    </div>`;
-  document.getElementById('app').appendChild(bg);
-  requestAnimationFrame(() => bg.classList.add('open'));
-  const close = () => { bg.classList.remove('open'); setTimeout(() => bg.remove(), 300); };
-  bg.querySelector('#bd-ok').onclick = close;
-  bg.onclick = e => { if (e.target === bg) close(); };
-}
-
-/* ═══════════════ Custom Premium Select Modal Sheet ═══════════════ */
-function openCustomSelectPicker({ title, subtitle, items, currentVal, onSelect }) {
-  let old = document.getElementById('custom-select-picker'); if (old) old.remove();
-  const bg = document.createElement('div');
-  bg.id = 'custom-select-picker'; bg.className = 'modal-bg';
-  
-  bg.innerHTML = `
-    <div class="modal-sheet" style="max-height:85vh;display:flex;flex-direction:column;padding-top:10px">
-      <div class="modal-handle"></div>
-      
-      <div class="flex items-center justify-between mb-2 pb-2 border-b border-line">
-        <div>
-          <h3 class="text-base font-bold text-on-surface flex items-center gap-2">
-            <i class="ph-duotone ph-list-dashes text-primary text-xl"></i>
-            <span>${esc(title)}</span>
-          </h3>
-          ${subtitle ? `<p class="text-xs text-muted mt-0.5">${esc(subtitle)}</p>` : ''}
-        </div>
-        <button class="w-8 h-8 rounded-full bg-surface-variant flex items-center justify-center text-muted hover:text-on-surface" id="csp-close">
-          <i class="ph-bold ph-x"></i>
-        </button>
-      </div>
-
-      ${items.length > 5 ? `
-      <div class="relative my-2">
-        <i class="ph-bold ph-magnifying-glass absolute right-3 top-3 text-muted text-sm"></i>
-        <input type="text" id="csp-search" placeholder="ابحث في الخيارات..." class="inp pr-9 text-xs py-2 w-full">
-      </div>
-      ` : ''}
-
-      <div class="overflow-y-auto flex-1 space-y-2 py-2 pr-1" id="csp-list" style="-webkit-overflow-scrolling:touch">
-        ${items.map(item => `
-          <div class="csp-item p-3.5 rounded-xl border border-line bg-card hover:border-primary/50 transition-all cursor-pointer flex items-center justify-between ${item.value === currentVal ? 'border-primary bg-primary/10 shadow-sm' : ''}" data-value="${esc(item.value)}" data-label="${esc(item.label)}">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl ${item.value === currentVal ? 'bg-primary text-white' : 'bg-primary/10 text-primary'} flex items-center justify-center text-lg shadow-xs">
-                <i class="ph-duotone ${item.icon || 'ph-map-pin'}"></i>
-              </div>
-              <div>
-                <div class="text-sm font-bold text-on-surface flex items-center gap-2">
-                  <span>${esc(item.label)}</span>
-                  ${item.badge ? `<span class="badge badge-subtle text-[10px] px-2 py-0.5">${esc(item.badge)}</span>` : ''}
-                </div>
-                ${item.sub ? `<div class="text-xs text-muted mt-0.5">${esc(item.sub)}</div>` : ''}
-              </div>
-            </div>
-            ${item.value === currentVal ? '<i class="ph-fill ph-check-circle text-primary text-xl"></i>' : '<i class="ph-bold ph-caret-left text-muted text-sm"></i>'}
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-
-  document.getElementById('app').appendChild(bg);
-  requestAnimationFrame(() => bg.classList.add('open'));
-
-  const close = () => { bg.classList.remove('open'); setTimeout(() => bg.remove(), 300); };
-  bg.querySelector('#csp-close').onclick = close;
-
-  const searchInp = bg.querySelector('#csp-search');
-  if (searchInp) {
-    searchInp.oninput = () => {
-      const q = searchInp.value.trim().toLowerCase();
-      bg.querySelectorAll('.csp-item').forEach(el => {
-        const txt = el.textContent.toLowerCase();
-        el.style.display = txt.includes(q) ? 'flex' : 'none';
-      });
-    };
-  }
-
-  bg.querySelectorAll('.csp-item').forEach(el => {
-    el.onclick = () => {
-      const val = el.getAttribute('data-value');
-      const lbl = el.getAttribute('data-label');
-      onSelect(val, lbl);
-      close();
-    };
-  });
-
-  bg.onclick = e => { if (e.target === bg) close(); };
-}
-
-const ALL_RTC_BRANCHES_PICKER = [
-  { value: 'فرع فيصل — الطوابق (الجيزة)', label: 'فرع فيصل (الجيزة)', sub: '٥ شارع منسى ياسين – الطوابق – أمام بي تك', badge: 'فيصل', icon: 'ph-map-trifold' },
-  { value: 'فرع مدينة نصر (القاهرة)', label: 'فرع مدينة نصر (القاهرة)', sub: '٤ شارع زكي رستم – متفرع من عباس العقاد', badge: 'مدينة نصر', icon: 'ph-buildings' },
-  { value: 'فرع 6 أكتوبر (الجيزة)', label: 'فرع 6 أكتوبر (الجيزة)', sub: 'الحي السابع – ميدان ماجدة بجوار مسجد الحصري', badge: 'أكتوبر', icon: 'ph-navigation-arrow' },
-  { value: 'فرع المعادي (القاهرة)', label: 'فرع المعادي (القاهرة)', sub: '٨/٣د تقسيم اللاسلكي – المعادي الجديدة', badge: 'المعادي', icon: 'ph-compass' },
-  { value: 'فرع المقطم (القاهرة)', label: 'فرع المقطم (القاهرة)', sub: 'شارع ٩ – خلف موقف الأتوبيس – الهضبة الوسطى', badge: 'المقطم', icon: 'ph-map-pin' },
-  { value: 'فرع الإسكندرية — سموحة', label: 'فرع سموحة (الإسكندرية)', sub: '٤٤ شارع توت عنخ آمون — بجوار كوبري كليوباترا', badge: 'الإسكندرية', icon: 'ph-waves' },
-  { value: 'فرع مصدق — الدقي (الجيزة)', label: 'فرع مصدق — الدقي (الجيزة)', sub: 'شارع مصدق — بالقرب من محطة مترو الدقي', badge: 'الدقي', icon: 'ph-map-pin-line' },
-  { value: 'فرع حلوان (القاهرة)', label: 'فرع حلوان (القاهرة)', sub: 'شارع راغب — حلوان', badge: 'حلوان', icon: 'ph-storefront' }
-];
-
-function openBranchPickerModal(currentVal, onSelect) {
-  openCustomSelectPicker({
-    title: 'اختر فرع مركز رسالة (RTC)',
-    subtitle: 'اختر الفرع الأقرب إليك لعرض كورساته ومجموعاته وتأكيد الحضور فيه',
-    items: ALL_RTC_BRANCHES_PICKER,
-    currentVal: currentVal || 'فرع فيصل — الطوابق (الجيزة)',
-    onSelect: (val, lbl) => {
-      onSelect(val, lbl);
-    }
-  });
-}
-
-function openRolePickerModal(currentVal, onSelect) {
-  const roles = [
-    { value: 'student', label: 'طالب (تسجيل في الكورسات وتلقي الشهادات)', sub: 'الانضمام للمجموعات وحضور الورِش والحصول على الشهادات المعتمدة', badge: 'طالب', icon: 'ph-student' },
-    { value: 'volunteer', label: 'متطوع / محاضر (إشراف وتنظيم المجموعات)', sub: 'إدارة المحاضرات وتسجيل حضور الطلاب وتولّي الإشراف', badge: 'إشراف', icon: 'ph-hand-heart' },
-    { value: 'admin', label: 'مشرف النظام (إدارة شاملة)', sub: 'إدارة جميع الكورسات والمستخدمين والشهادات والفروع', badge: 'أدمن', icon: 'ph-shield-check' }
-  ];
-  openCustomSelectPicker({
-    title: 'اختر نوع الحساب / الدور',
-    subtitle: 'حدد نوع حسابك في تطبيق مسار RTC',
-    items: roles,
-    currentVal: currentVal || 'student',
-    onSelect: (val, lbl) => {
-      onSelect(val, lbl);
-    }
-  });
-}
-
-function triggerExploreBranchPickerUI() {
-  openCustomSelectPicker({
-    title: 'تصفية الكورسات حسب الفرع',
-    subtitle: 'اختر فرع رسالة لعرض دوراته المتاحة',
-    items: [
-      { value: 'الكل', label: '🌐 جميع الفروع المتاحة', sub: 'عرض كافة كورسات المركز بجميع المحافظات', badge: 'الكل', icon: 'ph-globe' },
-      ...ALL_RTC_BRANCHES_PICKER
-    ],
-    currentVal: document.getElementById('explore-branch-select')?.value || 'الكل',
-    onSelect: (val, lbl) => {
-      const inp = document.getElementById('explore-branch-select');
-      const txt = document.getElementById('explore-branch-val-txt');
-      if (inp) inp.value = val;
-      if (txt) txt.textContent = lbl;
-      setExploreBranchFilter(val);
-    }
-  });
-}
-
-function triggerEditProfileBranchPickerUI() {
-  openBranchPickerModal(
-    document.getElementById('ep-branch')?.value || 'فرع فيصل — الطوابق (الجيزة)',
-    (val, lbl) => {
-      const inp = document.getElementById('ep-branch');
-      const txt = document.getElementById('ep-branch-val-txt');
-      if (inp) inp.value = val;
-      if (txt) txt.textContent = lbl;
-    }
-  );
-}
-
-function triggerVolunteerBranchPickerUI() {
-  openCustomSelectPicker({
-    title: 'تصفية كورسات الإشراف حسب الفرع',
-    subtitle: 'اختر الفرع لعرض الدورات المتاحة للتطوع والإشراف',
-    items: [
-      { value: 'الكل', label: '🌐 جميع الفروع المتاحة', sub: 'عرض كافّة الدورات بجميع الفروع', badge: 'الكل', icon: 'ph-globe' },
-      ...ALL_RTC_BRANCHES_PICKER
-    ],
-    currentVal: document.getElementById('vc-branch-select')?.value || 'الكل',
-    onSelect: (val, lbl) => {
-      const inp = document.getElementById('vc-branch-select');
-      const txt = document.getElementById('vc-branch-val-txt');
-      if (inp) inp.value = val;
-      if (txt) txt.textContent = lbl;
-      renderVolunteerCoursesList();
-    }
-  });
-}
-
-/* ═══════════════ Confetti ═══════════════ */
-function fireConfetti(count) {
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-  count = count || 60;
-  const canvas = document.getElementById('confetti-canvas');
-  if (!canvas) return;
-  canvas.style.display = 'block';
-  const ctx = canvas.getContext('2d');
-  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-  const clrs = ['#00288e','#00554e','#89f5e7','#d4af37','#ba1a1a','#7a30d8'];
-  const particles = Array.from({length:count}, () => ({
-    x: canvas.width/2, y: canvas.height/3,
-    vx:(Math.random()-.5)*12, vy:(Math.random()-.7)*14,
-    size:Math.random()*8+4, color:clrs[Math.floor(Math.random()*clrs.length)],
-    rotation:Math.random()*360, rSpeed:(Math.random()-.5)*8, alpha:1
-  }));
-  const t0 = performance.now();
-  (function frame(now) {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    let alive = false;
-    particles.forEach(p => {
-      p.x+=p.vx; p.y+=p.vy; p.vy+=.35; p.rotation+=p.rSpeed; p.alpha-=.015;
-      if (p.alpha > 0) { alive=true; ctx.save(); ctx.globalAlpha=Math.max(0,p.alpha); ctx.translate(p.x,p.y); ctx.rotate(p.rotation*Math.PI/180); ctx.fillStyle=p.color; ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size); ctx.restore(); }
-    });
-    if (alive && now-t0 < 2200) requestAnimationFrame(frame);
-    else { ctx.clearRect(0,0,canvas.width,canvas.height); canvas.style.display='none'; }
-  })(t0);
-}
-
-/* ═══════════════ Navigation ═══════════════ */
+/* ═══════════════ Navigation + guards ═══════════════ */
 function showScreenEl(id) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const el = document.getElementById('screen-' + id);
+  document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+  var el = document.getElementById('screen-' + id);
   if (el) el.classList.add('active');
   currentScreenId = id;
-  const body = el?.querySelector('.scr-body, .scr-body-full');
+  var body = el && el.querySelector('.scr-body, .scr-body-full');
   if (body) body.scrollTop = 0;
   toggleNavForScreen(id);
 }
 
 function toggleNavForScreen(id) {
-  const role = CURRENT_PROFILE?.role;
-  const ns = document.getElementById('nav-student');
-  const nv = document.getElementById('nav-volunteer');
-  const na = document.getElementById('nav-admin');
-  const isStudTab  = STUDENT_TABS.includes(id);
-  const isVolTab   = VOLUNTEER_TABS.includes(id);
-  const isAdmTab   = ADMIN_TABS.includes(id);
-  // Show nav based on current user role
-  if (role === 'student')    { ns?.classList.toggle('hidden', !isStudTab);  nv?.classList.add('hidden'); na?.classList.add('hidden'); }
-  else if (role === 'volunteer') { nv?.classList.toggle('hidden', !isVolTab); ns?.classList.add('hidden'); na?.classList.add('hidden'); }
-  else if (role === 'admin') { na?.classList.toggle('hidden', !isAdmTab);  ns?.classList.add('hidden'); nv?.classList.add('hidden'); }
-  else { ns?.classList.add('hidden'); nv?.classList.add('hidden'); na?.classList.add('hidden'); }
+  var role = CURRENT_PROFILE && CURRENT_PROFILE.role;
+  var ns = document.getElementById('nav-student');
+  var nv = document.getElementById('nav-volunteer');
+  var na = document.getElementById('nav-admin');
+  var tabs = {
+    student: ['s-home', 's-courses', 's-points', 's-certs', 's-profile'],
+    volunteer: ['v-home', 'v-batches', 'v-courses', 's-analytics', 'v-profile'],
+    admin: ['a-home', 'a-users', 'a-courses', 's-analytics']
+  };
+  var mine = tabs[role] || [];
+  var onTab = mine.indexOf(id) !== -1;
+  if (ns) ns.classList.toggle('hidden', !(role === 'student' && onTab));
+  if (nv) nv.classList.toggle('hidden', !(role === 'volunteer' && onTab));
+  if (na) na.classList.toggle('hidden', !(role === 'admin' && onTab));
 }
 
 function updateNavActive(id) {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.getAttribute('data-screen') === id));
+  document.querySelectorAll('.nav-btn').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-screen') === id);
+  });
+}
+
+function guard(id) {
+  var role = CURRENT_PROFILE && CURRENT_PROFILE.role;
+  if (!SEC.canAccess(id, role)) {
+    toast(t('noPermission'), 'err');
+    return false;
+  }
+  if (CURRENT_PROFILE && CURRENT_PROFILE.status === 'inactive') {
+    toast('تم إيقاف الحساب. تواصل مع المشرف.', 'err');
+    return false;
+  }
+  return true;
 }
 
 function push(id) {
+  if (!guard(id)) return;
   if (currentScreenId !== id) {
     navStack.push(currentScreenId);
     showScreenEl(id);
     renderScreen(id);
-    try { history.pushState({ screen: id }, '', '#' + id); } catch(e) {}
+    try { history.pushState({ screen: id }, '', '#' + id); } catch (e) {}
   }
 }
 
 function pop() {
   if (navStack.length) {
-    const prev = navStack.pop();
+    var prev = navStack.pop();
+    if (!guard(prev)) { routeToRoleHome(); return; }
     showScreenEl(prev);
     renderScreen(prev);
     updateNavActive(prev);
+    try { history.replaceState({ screen: prev }, '', '#' + prev); } catch (e) {}
   } else {
-    // If stack is empty on tab pages, return smoothly to user role home
     routeToRoleHome();
   }
 }
 
 function switchTab(id) {
-  const role = CURRENT_PROFILE?.role || 'student';
-  const home = role === 'volunteer' ? 'v-home' : role === 'admin' ? 'a-home' : 's-home';
-  if (id !== home) navStack = [home];
-  else navStack = [];
+  if (!guard(id)) return;
+  var role = (CURRENT_PROFILE && CURRENT_PROFILE.role) || 'student';
+  var home = role === 'volunteer' ? 'v-home' : role === 'admin' ? 'a-home' : 's-home';
+  navStack = id === home ? [] : [home];
   showScreenEl(id);
   renderScreen(id);
   updateNavActive(id);
-  try { history.pushState({ screen: id }, '', '#' + id); } catch(e) {}
+  try { history.pushState({ screen: id }, '', '#' + id); } catch (e) {}
 }
 
-window.addEventListener('popstate', () => {
-  if (currentScreenId !== 'splash' && currentScreenId !== 'onboarding') {
-    pop();
+window.addEventListener('popstate', function (ev) {
+  if (currentScreenId === 'splash' || currentScreenId === 'onboarding') return;
+  var target = ev.state && ev.state.screen;
+  if (target && guard(target)) {
+    showScreenEl(target);
+    renderScreen(target);
+    updateNavActive(target);
+  } else {
+    routeToRoleHome();
   }
 });
 
+function routeToRoleHome() {
+  if (!CURRENT_PROFILE) { showScreenEl('onboarding'); nextOnbStep(1); return; }
+  var role = CURRENT_PROFILE.role;
+  if (role === 'volunteer') switchTab('v-home');
+  else if (role === 'admin') switchTab('a-home');
+  else switchTab('s-home');
+}
+
 function renderScreen(id) {
-  const map = {
+  var map = {
     's-home': renderStudentHome, 's-courses': renderStudentCourses,
     's-points': renderPoints, 's-certs': renderCerts, 's-profile': renderProfile,
     's-edit-profile': renderEditProfile, 's-leaderboard': renderLeaderboard,
     's-explore': renderExplore, 's-notifications': renderNotifications,
+    's-course-detail': renderCourseDetail, 's-checkin': renderCheckin,
+    's-excuse': renderExcuseForm, 's-ledger': renderLedger,
     'support': renderSupport,
-    'v-home': renderVolunteerHome, 'v-batches': renderVolunteerBatches, 'v-courses': renderVolunteerCoursesList, 'v-profile': renderVolunteerProfile,
+    'v-home': renderVolunteerHome, 'v-batches': renderVolunteerBatches,
+    'v-courses': renderVolunteerCoursesList, 'v-profile': renderVolunteerProfile,
+    'v-excuses': renderStaffExcuses,
     'a-home': renderAdminHome, 'a-users': renderAdminUsers, 'a-courses': renderAdminCourses,
     'a-certs': renderAdminCerts, 'a-settings': renderAdminSettings,
-    's-analytics': renderAnalytics,
+    'a-branches': renderBranchesAdmin, 'a-broadcast': renderBroadcast,
+    's-analytics': renderAnalytics
   };
   if (map[id]) map[id]();
 }
 
-/* ═══════════════ Avatar helpers ═══════════════ */
-function initialsOf(name) {
-  if (!name) return '؟';
-  const parts = name.trim().split(/\s+/);
-  return parts[0]?.[0] || '؟';
-}
-function avatarHTML(profile) {
-  if (profile?.avatar_url) return `<img src="${esc(profile.avatar_url)}" onerror="this.parentElement.textContent='${esc(initialsOf(profile.full_name))}'">`;
-  return esc(initialsOf(profile?.full_name || ''));
-}
-
-/* ═══════════════ Local DB helpers ═══════════════ */
+/* ═══════════════ Prefs / dark / lang ═══════════════ */
 function getPref(key, def) {
-  try { const v = localStorage.getItem('rtc_pref_' + key); return v !== null ? JSON.parse(v) : def; }
-  catch(e) { return def; }
+  try {
+    var v = localStorage.getItem('rtc_pref_' + key);
+    return v !== null ? JSON.parse(v) : def;
+  } catch (e) { return def; }
 }
-function setPref(key, val) { try { localStorage.setItem('rtc_pref_' + key, JSON.stringify(val)); } catch(e) {} }
-function resetAppData() {
-  showConfirm('مسح جميع البيانات؟', 'سيتم تسجيل الخروج وحذف كل البيانات المؤقتة المحفوظة على هذا الجهاز.', async () => {
-    if (window.supabaseClient) await window.supabaseClient.auth.signOut();
-    localStorage.clear();
-    location.reload();
-  }, { yesLabel: 'مسح ومسح الخروج' });
+function setPref(key, val) {
+  try { localStorage.setItem('rtc_pref_' + key, JSON.stringify(val)); } catch (e) {}
 }
 
-/* ═══════════════ Dark Mode ═══════════════ */
 function applyDarkMode() {
-  const isDark = CURRENT_PROFILE?.dark_mode ?? getPref('dark', false);
+  var isDark = (CURRENT_PROFILE && CURRENT_PROFILE.dark_mode) || getPref('dark', false);
   document.documentElement.classList.toggle('dark', !!isDark);
 }
+
 async function toggleDark() {
+  var next = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', next);
+  setPref('dark', next);
+  toast(next ? t('dark') + ' 🌙' : t('light') + ' ☀️', 'info');
+  SEC.haptic(10);
+  if (CURRENT_PROFILE && CURRENT_USER) {
+    try {
+      CURRENT_PROFILE.dark_mode = next;
+      await API.updateMyProfile({ dark_mode: next });
+    } catch (e) {}
+  }
+}
+
+function toggleLang() {
+  var next = window.RTCi18n.current() === 'ar' ? 'en' : 'ar';
+  window.RTCi18n.setLang(next);
   if (CURRENT_PROFILE) {
-    CURRENT_PROFILE.dark_mode = !CURRENT_PROFILE.dark_mode;
-    applyDarkMode();
-    toast(CURRENT_PROFILE.dark_mode ? 'الوضع الليلي 🌙' : 'الوضع النهاري ☀️', 'info');
-    if (window.supabaseClient && CURRENT_USER) {
-      await window.supabaseClient.from('profiles').update({ dark_mode: CURRENT_PROFILE.dark_mode }).eq('id', CURRENT_USER.id);
-    }
+    CURRENT_PROFILE.lang = next;
+    API.updateMyProfile({ lang: next }).catch(function () {});
   }
+  toast(next === 'ar' ? 'تم التحويل للعربية' : 'Switched to English', 'ok');
+  renderScreen(currentScreenId);
 }
 
-/* ═══════════════ Empty State ═══════════════ */
-function emptyState(icon, title, sub, btnLabel, btnClick) {
-  return `<div style="padding:36px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px">
-    <i class="ph-duotone ${icon}" style="font-size:46px;color:var(--mut)"></i>
-    <div class="font-bold text-sm">${esc(title)}</div>
-    <div class="text-xs" style="color:var(--mut)">${esc(sub)}</div>
-    ${btnLabel ? `<button class="btn btn-primary btn-sm mt-2" onclick="${btnClick}">${esc(btnLabel)}</button>` : ''}
-  </div>`;
-}
-
-const ALL_BRANCH_NAMES = [
-  'فرع فيصل — الطوابق (الجيزة)',
-  'فرع مدينة نصر (القاهرة)',
-  'فرع 6 أكتوبر (الجيزة)',
-  'فرع المعادي (القاهرة)',
-  'فرع المقطم (القاهرة)',
-  'فرع الإسكندرية — سموحة',
-  'فرع مصدق — الدقي (الجيزة)',
-  'فرع حلوان (القاهرة)'
-];
-
-const DEMO_COURSES = [];
-const DEMO_BATCHES = [];
-
-/* ═══════════════ Supabase: fetch courses ═══════════════ */
-async function fetchCourses(force, branchFilter) {
-  if (_coursesCache && !force && !branchFilter) return _coursesCache;
-  let list = [];
-  if (window.supabaseClient) {
-    try {
-      let q = window.supabaseClient.from('courses').select('*').eq('is_active', true).order('created_at');
-      if (branchFilter && branchFilter !== 'الكل') q = q.eq('branch', branchFilter);
-      const { data, error } = await q;
-      if (!error && data) {
-        list = data;
-      } else if (error) {
-        console.error('fetchCourses error:', error);
-      }
-    } catch(e) { console.warn('fetchCourses Supabase error:', e); }
-  }
-  if (!branchFilter || branchFilter === 'الكل') _coursesCache = list;
-  return list;
-}
-
-/* ═══════════════ Supabase: fetch batches ═══════════════ */
-async function fetchBatches(force, branchFilter) {
-  if (_batchesCache && !force && !branchFilter) return _batchesCache;
-  let list = [];
-  if (window.supabaseClient) {
-    try {
-      let q = window.supabaseClient
-        .from('batches')
-        .select('*, courses(title, category, icon, color, sessions_count), profiles!instructor_id(full_name)')
-        .eq('is_active', true)
-        .order('created_at');
-      if (branchFilter && branchFilter !== 'الكل') q = q.eq('branch', branchFilter);
-      const { data, error } = await q;
-      if (!error && data) {
-        list = data;
-      } else if (error) {
-        console.error('fetchBatches error:', error);
-      }
-    } catch(e) { console.warn('fetchBatches Supabase error:', e); }
-  }
-  if (!branchFilter || branchFilter === 'الكل') _batchesCache = list;
-  return list;
-}
-
-/* ═══════════════ Supabase: fetch my enrollments ═══════════════ */
-async function fetchMyEnrollments() {
-  if (!window.supabaseClient || !CURRENT_USER) return [];
-  try {
-    const { data, error } = await window.supabaseClient
-      .from('enrollments')
-      .select('*, batches(name, schedule, branch, sessions_done, courses(title, category, icon, color, sessions_count))')
-      .eq('student_id', CURRENT_USER.id);
-    if (error) throw error;
-    return data || [];
-  } catch(e) { console.warn('fetchMyEnrollments error:', e); return []; }
-}
-
-/* ═══════════════ Supabase: fetch my batches (volunteer) ═══════════════ */
-async function fetchMyBatches() {
-  if (!window.supabaseClient || !CURRENT_USER) return [];
-  try {
-    const { data, error } = await window.supabaseClient
-      .from('batches')
-      .select('*, courses(title, category, icon, color, sessions_count)')
-      .eq('instructor_id', CURRENT_USER.id)
-      .eq('is_active', true);
-    if (error) throw error;
-    return data || [];
-  } catch(e) { console.warn('fetchMyBatches error:', e); return []; }
-}
-
-/* ═══════════════ Supabase: get batch students ═══════════════ */
-async function fetchBatchStudents(batchId) {
-  if (!window.supabaseClient) return [];
-  try {
-    const { data, error } = await window.supabaseClient
-      .from('enrollments')
-      .select('*, profiles!student_id(id, full_name, avatar_url, phone)')
-      .eq('batch_id', batchId);
-    if (error) throw error;
-    return data || [];
-  } catch(e) { console.warn('fetchBatchStudents error:', e); return []; }
-}
-
-/* ═══════════════ Supabase: fetch all profiles (admin) ═══════════════ */
-async function fetchAllProfiles() {
-  if (!window.supabaseClient) return [];
-  try {
-    const { data, error } = await window.supabaseClient.from('profiles').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    return data || [];
-  } catch(e) { console.warn('fetchAllProfiles error:', e); return []; }
-}
-
-/* ═══════════════ ONBOARDING ═══════════════ */
-let regState = { role:'student', name:'', phone:'', branch:'فرع مدينة نصر (القاهرة)', email:'', avatar:null, googleUser:null };
-
-function nextOnbStep(n) {
-  const step1 = document.getElementById('onb-step-1');
-  const step2 = document.getElementById('onb-step-2');
-  if (step1) step1.classList.toggle('active', n===1);
-  if (step2) step2.classList.toggle('active', n===2);
-  
-  if (n===1) tryInitGoogle();
-}
-
-function triggerBranchPickerOnb() {
-  const select = document.getElementById('onb-address');
-  const current = select?.value || regState.branch || 'فرع مدينة نصر (القاهرة)';
-  openBranchPickerModal(current, (val, lbl) => {
-    regState.branch = val;
-    if (select) select.value = val;
-    const txt = document.getElementById('onb-branch-lbl');
-    if (txt) txt.textContent = val;
+function applyI18nNav() {
+  document.querySelectorAll('[data-i18n]').forEach(function (el) {
+    el.textContent = t(el.getAttribute('data-i18n'));
   });
 }
+window.applyI18nNav = applyI18nNav;
 
-function clearFieldError(iid, eid) {
-  document.getElementById(iid)?.classList.remove('bad');
-  document.getElementById(eid)?.classList.remove('show');
-}
-function setFieldError(iid, eid) {
-  document.getElementById(iid)?.classList.add('bad');
-  document.getElementById(eid)?.classList.add('show');
+/* ═══════════════ Auth ═══════════════ */
+function nextOnbStep(n) {
+  var s1 = document.getElementById('onb-step-1');
+  var s2 = document.getElementById('onb-step-2');
+  if (s1) s1.classList.toggle('active', n === 1);
+  if (s2) s2.classList.toggle('active', n === 2);
+  var d1 = document.getElementById('dot-1');
+  var d2 = document.getElementById('dot-2');
+  if (d1) d1.style.width = n === 1 ? '32px' : '8px';
+  if (d2) d2.style.width = n === 2 ? '32px' : '8px';
+  if (d1) d1.style.background = n >= 1 ? 'var(--primary)' : 'var(--line)';
+  if (d2) d2.style.background = n >= 2 ? 'var(--primary)' : 'var(--line)';
+  if (n === 1) tryInitGoogle();
 }
 
-/* ─── Google OAuth ─── */
 async function tryInitGoogle() {
-  const statusEl = document.getElementById('g-status');
-  const mount    = document.getElementById('g-btn-mount');
-
-  // If already logged in from a previous auth session
-  if (window.supabaseClient) {
-    const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (session?.user) {
-      handleAuthSession(session);
-      return;
-    }
+  var statusEl = document.getElementById('g-status');
+  var mount = document.getElementById('g-btn-mount');
+  if (statusEl) statusEl.innerHTML = '<i class="ph-fill ph-info"></i><span>' + esc(t('googleHint')) + '</span>';
+  var hint = document.getElementById('oauth-origin-hint');
+  if (hint) {
+    var origin = location.origin + '/';
+    hint.innerHTML = '<div class="text-[11px] text-muted leading-relaxed">أضف هذا الرابط في Supabase → Authentication → Redirect URLs ثم اضغط الدخول من نفس التبويب:</div>' +
+      '<button type="button" class="chip text-[11px] mt-1.5 font-mono" id="copy-origin-btn" dir="ltr">' + esc(origin) + '</button>';
+    var copyBtn = document.getElementById('copy-origin-btn');
+    if (copyBtn) copyBtn.onclick = function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(origin).then(function () { toast('تم نسخ الرابط', 'ok'); }).catch(function () {});
+    };
   }
-
-  if (statusEl) { statusEl.className='g-status info'; statusEl.innerHTML='<i class="ph-fill ph-info"></i><span>اضغط الزر لتسجيل الدخول بـ Google</span>'; }
-  if (mount) {
-    mount.innerHTML = '';
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-primary btn-big w-full shadow-lg gap-3';
-    btn.innerHTML = '<i class="ph-fill ph-google-logo text-xl"></i><span>تسجيل الدخول باستخدام Google</span>';
-    btn.onclick = () => triggerGoogleLogin();
-    mount.appendChild(btn);
-  }
+  if (!mount) return;
+  mount.innerHTML = '';
+  var btn = document.createElement('button');
+  btn.className = 'btn btn-primary btn-big w-full shadow-lg gap-3';
+  btn.innerHTML = '<i class="ph-fill ph-google-logo text-xl"></i><span>' + esc(t('googleCta')) + '</span>';
+  btn.onclick = triggerGoogleLogin;
+  mount.appendChild(btn);
 }
 
 async function triggerGoogleLogin() {
-  if (!window.supabaseClient) { toast('Supabase غير متصل — تحقق من الإعدادات', 'err'); return; }
-  toast('جاري فتح نافذة Google...', 'info', 'ph-google-logo');
-  const { error } = await window.supabaseClient.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin + window.location.pathname, queryParams: { prompt: 'select_account' } }
-  });
-  if (error) { toast('خطأ في الاتصال بـ Google: ' + error.message, 'err'); }
-}
-
-async function handleAuthSession(session) {
-  if (!session?.user) return;
-  _authHandled = true;
-  CURRENT_USER = session.user;
-  const meta = session.user.user_metadata || {};
-  const email = session.user.email || '';
-  const name  = meta.full_name || meta.name || email.split('@')[0] || '';
-  const pic   = meta.avatar_url || meta.picture || null;
-
-  regState.googleUser = { email, name, picture: pic };
-  regState.email = email;
-  if (!regState.name || regState.name === '—') regState.name = name;
-  if (pic && !regState.avatar) regState.avatar = pic;
-
-  const nameInp  = document.getElementById('onb-name');  if (nameInp) nameInp.value = regState.name;
-  const emailInp = document.getElementById('onb-email-chip'); if (emailInp) emailInp.value = email;
-
-  // Clean URL hash
-  if (window.location.hash && window.location.hash.includes('access_token')) {
-    try { history.replaceState(null, '', window.location.pathname); } catch(e) {}
-  }
-
-  // Check profile
-  if (window.supabaseClient) {
-    try {
-      const { data: prof } = await window.supabaseClient.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle();
-      if (prof && prof.full_name && prof.phone && prof.phone.trim().length >= 10) {
-        CURRENT_PROFILE = prof;
-        try { localStorage.setItem('rtc_user_profile', JSON.stringify(CURRENT_PROFILE)); } catch(e) {}
-        applyDarkMode();
-        toast('أهلاً بعودتك يا ' + prof.full_name + '! 🎉', 'ok');
-        routeToRoleHome();
-        return;
-      }
-    } catch(e) { console.warn('Profile check error:', e); }
-  }
-
-  // New or incomplete -> Show Step 2
-  toast('تم التوثيق بـ Google — يرجى إكمال رقم الموبايل والفرع 📝', 'info', 'ph-check-circle');
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  const onbScreen = document.getElementById('screen-onboarding');
-  if (onbScreen) onbScreen.classList.add('active');
-  currentScreenId = 'onboarding';
-  nextOnbStep(2);
-}
-
-/* ─── Step 2: Profile submission ─── */
-async function submitProfile() {
-  const nameEl   = document.getElementById('onb-name');
-  const phoneEl  = document.getElementById('onb-phone');
-  const branchEl = document.getElementById('onb-address');
-  if (!nameEl || !phoneEl || !branchEl) return;
-
-  const name   = nameEl.value.trim();
-  const phone  = phoneEl.value.trim();
-  const branch = branchEl.value || 'فرع مدينة نصر (القاهرة)';
-
-  clearFieldError('onb-name','err-name'); clearFieldError('onb-phone','err-phone');
-  let ok = true;
-  if (name.split(/\s+/).filter(Boolean).length < 3 || name.length < 6) { setFieldError('onb-name','err-name'); ok=false; }
-  if (!/^01[0125][0-9]{8}$/.test(phone)) { setFieldError('onb-phone','err-phone'); ok=false; }
-  if (!ok) { toast('يرجى مراجعة البيانات — الاسم ثلاثي ورقم موبايل صحيح','err'); return; }
-
-  regState.name = name; regState.phone = phone; regState.branch = branch;
-
-  const btn = document.querySelector('#onb-step-2 .btn-primary');
-  if (btn) { btn.disabled=true; btn.innerHTML='<i class="ph-duotone ph-spinner" style="animation:spin 1s linear infinite"></i> جارٍ الحفظ...'; }
-
-  if (!CURRENT_USER || !CURRENT_USER.email) {
-    toast('خطأ: يلزم توثيق الحساب عبر Google أولاً','err');
-    if (btn) { btn.disabled=false; btn.innerHTML='حفظ وبدء الاستخدام'; }
-    nextOnbStep(1);
-    return;
-  }
-
-  const emailVal  = CURRENT_USER.email;
-  const avatarVal = CURRENT_USER.user_metadata?.avatar_url || CURRENT_USER.user_metadata?.picture || null;
-
   try {
-    let prof = null;
-    if (window.supabaseClient) {
-      const payload = {
-        id: CURRENT_USER.id,
-        full_name: regState.name,
-        email: emailVal,
-        phone: regState.phone,
-        branch: branch,
-        role: 'student', // All new users are students
-        avatar_url: avatarVal,
-        status: 'active'
-      };
-      const { data, error } = await window.supabaseClient.from('profiles').upsert(payload, { onConflict: 'id' }).select().single();
-      if (!error && data) prof = data;
-    }
+    toast('جاري فتح نافذة Google...', 'info', 'ph-google-logo');
+    await API.signInGoogle();
+  } catch (e) {
+    toast(UI.humanError(e), 'err');
+  }
+}
 
-    if (!prof) {
-      prof = {
-        id: CURRENT_USER.id,
-        full_name: regState.name,
-        phone: regState.phone,
-        email: emailVal,
-        branch: branch,
-        role: 'student',
-        avatar_url: avatarVal,
-        points: 50,
-        status: 'active',
-        badge_ids: ['welcome']
-      };
-    }
+async function hydrateSession(session) {
+  if (!session || !session.user) return false;
+  CURRENT_USER = session.user;
+  try {
+    CURRENT_PROFILE = await API.fetchMyProfile();
+  } catch (e) {
+    console.warn('profile fetch', e);
+    CURRENT_PROFILE = null;
+  }
+  if (!CURRENT_PROFILE) {
+    // trigger may still be running — retry once
+    await new Promise(function (r) { setTimeout(r, 600); });
+    try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e2) {}
+  }
+  if (CURRENT_PROFILE && CURRENT_PROFILE.lang) {
+    window.RTCi18n.setLang(CURRENT_PROFILE.lang);
+  }
+  applyDarkMode();
+  try { _branches = await API.fetchBranches(); } catch (e) { _branches = []; }
+  refreshUnread();
+  return true;
+}
 
-    CURRENT_PROFILE = prof;
-    try { localStorage.setItem('rtc_user_profile', JSON.stringify(prof)); } catch(e) {}
+function profileComplete(p) {
+  return !!(p && p.full_name && p.full_name.trim().split(/\s+/).length >= 2 && p.phone && /^01[0125][0-9]{8}$/.test(p.phone));
+}
 
-    await awardBadge('welcome');
-    applyDarkMode();
-    fireConfetti();
-    toast('تم إنشاء حسابك بنجاح — أهلاً بك في رسالة! 🎉','ok');
+async function afterAuth(session) {
+  _authHandled = true;
+  await hydrateSession(session);
+  if (window.location.hash && window.location.hash.indexOf('access_token') !== -1) {
+    try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+  }
+  if (profileComplete(CURRENT_PROFILE)) {
+    toast(t('welcomeBack') + ' يا ' + (CURRENT_PROFILE.full_name.split(' ')[0]) + ' 🎉', 'ok');
     routeToRoleHome();
-  } catch(err) {
-    console.error('submitProfile error:', err);
-    toast('حدث خطأ أثناء التسجيل: ' + (err.message||''), 'err');
-    if (btn) { btn.disabled=false; btn.innerHTML='حفظ وبدء الاستخدام'; }
+  } else {
+    fillOnbFromAuth();
+    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+    var onb = document.getElementById('screen-onboarding');
+    if (onb) onb.classList.add('active');
+    currentScreenId = 'onboarding';
+    nextOnbStep(2);
   }
 }
 
-/* ─── Route to role home ─── */
-function routeToRoleHome() {
-  if (!CURRENT_PROFILE) { showScreenEl('onboarding'); nextOnbStep(1); return; }
-  const role = CURRENT_PROFILE.role;
-  if (role === 'student')    switchTab('s-home');
-  else if (role === 'volunteer') switchTab('v-home');
-  else switchTab('a-home');
-}
-
-/* ═══════════════ Badges ═══════════════ */
-async function awardBadge(badgeId) {
-  if (!CURRENT_PROFILE || !CURRENT_USER) return;
-  const existing = CURRENT_PROFILE.badge_ids || [];
-  if (existing.includes(badgeId)) return;
-  const updated = [...existing, badgeId];
-  CURRENT_PROFILE.badge_ids = updated;
-  const meta = BADGES_CATALOG.find(b => b.id === badgeId);
-  if (meta) toast('🏅 شارة جديدة: ' + meta.name, 'ok', 'ph-medal');
-  if (window.supabaseClient && CURRENT_USER) {
-    await window.supabaseClient.from('profiles').update({ badge_ids: updated }).eq('id', CURRENT_USER.id);
+function fillOnbFromAuth() {
+  var meta = (CURRENT_USER && CURRENT_USER.user_metadata) || {};
+  var name = (CURRENT_PROFILE && CURRENT_PROFILE.full_name) || meta.full_name || meta.name || '';
+  var email = (CURRENT_USER && CURRENT_USER.email) || '';
+  var n = document.getElementById('onb-name'); if (n && !n.value) n.value = name;
+  var e = document.getElementById('onb-email-chip'); if (e) e.value = email;
+  if (CURRENT_PROFILE && CURRENT_PROFILE.phone) {
+    var p = document.getElementById('onb-phone'); if (p) p.value = CURRENT_PROFILE.phone;
   }
 }
 
-async function checkBadges() {
-  if (!CURRENT_PROFILE) return;
-  const p = CURRENT_PROFILE;
-  const enrollments = await fetchMyEnrollments();
-  if (enrollments.length >= 1) await awardBadge('firstCourse');
-  if (enrollments.length >= 3) await awardBadge('explorer');
-  if (p.points >= 100) await awardBadge('points100');
-  if (p.points >= 500) await awardBadge('points500');
-  if (p.streak >= 5) await awardBadge('streak5');
+function clearFieldError(iid, eid) {
+  document.getElementById(iid) && document.getElementById(iid).classList.remove('bad');
+  document.getElementById(eid) && document.getElementById(eid).classList.remove('show');
+}
+function setFieldError(iid, eid) {
+  document.getElementById(iid) && document.getElementById(iid).classList.add('bad');
+  document.getElementById(eid) && document.getElementById(eid).classList.add('show');
 }
 
+function triggerBranchPickerOnb() {
+  openBranchPicker(document.getElementById('onb-address') && document.getElementById('onb-address').value, function (id, label) {
+    var h = document.getElementById('onb-address'); if (h) h.value = id;
+    var tEl = document.getElementById('onb-branch-lbl'); if (tEl) tEl.textContent = label;
+  });
+}
+
+function openBranchPicker(currentId, onSelect) {
+  var items = _branches.map(function (b) {
+    return { value: b.id, label: b.name_ar, sub: b.address || b.city, badge: b.city, icon: 'ph-map-pin' };
+  });
+  UI.openPicker({ title: 'اختر الفرع', subtitle: 'الفرع يحدد كورساتك وإشعاراتك', items: items, currentVal: currentId, onSelect: onSelect });
+}
+
+async function submitProfile() {
+  var nameEl = document.getElementById('onb-name');
+  var phoneEl = document.getElementById('onb-phone');
+  var branchEl = document.getElementById('onb-address');
+  if (!nameEl || !phoneEl) return;
+  var name = nameEl.value.trim();
+  var phone = phoneEl.value.trim();
+  var branchId = (branchEl && branchEl.value) || (_branches[0] && _branches[0].id);
+  clearFieldError('onb-name', 'err-name'); clearFieldError('onb-phone', 'err-phone');
+  var ok = true;
+  if (name.split(/\s+/).filter(Boolean).length < 3 || name.length < 6) { setFieldError('onb-name', 'err-name'); ok = false; }
+  if (!/^01[0125][0-9]{8}$/.test(phone)) { setFieldError('onb-phone', 'err-phone'); ok = false; }
+  if (!ok) { toast('راجع الاسم الثلاثي ورقم الموبايل', 'err'); return; }
+  if (!CURRENT_USER) { toast(t('needLogin'), 'err'); nextOnbStep(1); return; }
+
+  var btn = document.querySelector('#onb-step-2 .btn-primary');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph-duotone ph-spinner spin"></i> جارٍ الحفظ...'; }
+  try {
+    CURRENT_PROFILE = await API.updateMyProfile({ full_name: name, phone: phone, branch_id: branchId || null });
+    CURRENT_PROFILE.badge_ids = CURRENT_PROFILE.badge_ids || ['welcome'];
+    applyDarkMode();
+    UI.fireConfetti();
+    toast('تم إنشاء حسابك — أهلاً بك في رسالة 🎉', 'ok');
+    routeToRoleHome();
+  } catch (err) {
+    toast(UI.humanError(err), 'err');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span>' + t('saveStart') + '</span><i class="ph-bold ph-check"></i>'; }
+  }
+}
+
+function askLogout() {
+  UI.showConfirm(t('logout') + '؟', 'سيتم إنهاء الجلسة على هذا الجهاز.', async function () {
+    try { await API.signOut(); } catch (e) {}
+    CURRENT_USER = CURRENT_PROFILE = null;
+    API.invalidate();
+    location.reload();
+  }, { yesLabel: t('logout') });
+}
+
+function resetAppData() {
+  UI.showConfirm('مسح بيانات الجهاز؟', 'سيتم تسجيل الخروج ومسح التخزين المحلي فقط. بيانات السحابة لن تُحذف.', async function () {
+    try { await API.signOut(); } catch (e) {}
+    localStorage.clear();
+    location.reload();
+  }, { yesLabel: 'مسح والخروج' });
+}
+
+/* ═══════════════ Student home ═══════════════ */
 function getGreeting() {
-  const hr = new Date().getHours();
+  var hr = new Date().getHours();
   if (hr >= 5 && hr < 12) return 'صباح الخير والهمة ☀️';
   if (hr >= 12 && hr < 18) return 'مساء الخير والنجاح 🌤️';
   return 'مساء الخير والتطوير 🌙';
 }
 
-/* ═══════════════ STUDENT HOME ═══════════════ */
+function branchOf(p) {
+  if (!p) return null;
+  if (p.branches) return p.branches;
+  return _branches.find(function (b) { return b.id === p.branch_id; }) || null;
+}
+
+async function refreshUnread() {
+  try {
+    _unread = await API.unreadCount();
+    document.querySelectorAll('#notif-dot').forEach(function (d) {
+      d.style.display = _unread ? 'block' : 'none';
+    });
+  } catch (e) {}
+}
+
 async function renderStudentHome() {
   if (!CURRENT_PROFILE) return;
-  const p = CURRENT_PROFILE;
-  setEl('sh-name', (p.full_name.split(' ')[0] || p.full_name) + ' — ' + getGreeting());
-  setEl('sh-branch', p.branch || '');
-  setEl('sh-level', Math.max(1, Math.floor((p.points||0)/150)+1) + ' ⭐');
-  setEl('sh-att', (p.attendance_pct||0) + '%');
-  setEl('sh-pts', p.points||0);
-  setEl('sh-streak', '🔥 ' + (p.streak||0));
-  const av = document.getElementById('home-av'); if (av) av.innerHTML = avatarHTML(p);
-  const lv = Math.max(1, Math.floor((p.points||0)/150)+1);
-  const prog = Math.min(100, Math.round(((p.points||0)%150)/150*100));
-  const rem  = 150 - ((p.points||0)%150);
-  const lb = document.getElementById('sh-levelbar'); if (lb) lb.style.width = prog+'%';
-  const lt = document.getElementById('sh-levelbar-txt'); if (lt) lt.textContent = rem + ' نقطة للمستوى التالي';
+  var p = CURRENT_PROFILE;
+  var first = (p.full_name || '').split(' ')[0] || p.full_name;
+  setEl('sh-name', first + ' — ' + getGreeting());
+  var br = branchOf(p);
+  setEl('sh-branch', (br && br.name_ar) || '');
+  setEl('sh-level', Math.max(1, Math.floor((p.points || 0) / 150) + 1) + ' ⭐');
+  setEl('sh-att', (p.attendance_pct || 0) + '%');
+  setEl('sh-pts', p.points || 0);
+  setEl('sh-streak', '🔥 ' + (p.streak || 0));
+  var av = document.getElementById('home-av'); if (av) av.innerHTML = UI.avatarHTML(p);
+  var prog = Math.min(100, Math.round(((p.points || 0) % 150) / 150 * 100));
+  var rem = 150 - ((p.points || 0) % 150);
+  var lb = document.getElementById('sh-levelbar'); if (lb) lb.style.width = prog + '%';
+  var lt = document.getElementById('sh-levelbar-txt'); if (lt) lt.textContent = rem + ' نقطة للمستوى التالي';
 
-  // Dynamic Facebook Page link for user's branch
-  const BRANCH_FB_LINKS = {
-    'فرع مدينة نصر (القاهرة)': { name: 'فيسبوك فرع مدينة نصر 📢', desc: 'تابع جداول شهر يوليو ومواعيد المقابلات الشخصية', url: 'https://www.facebook.com/RTC.Nasrcity/?locale=ar_AR' },
-    'فرع مصدق — الدقي (الجيزة)': { name: 'فيسبوك فرع مصدق (الدقي) 📢', desc: 'مواعيد فتح المجموعات والإنترفيو لفرع الدقي', url: 'https://www.facebook.com/RTC.Dokki/' },
-    'فرع فيصل — الطوابق (الجيزة)': { name: 'فيسبوك فرع فيصل (الطوابق) 📢', desc: 'مواعيد الدورات والخدمات المجانية بفرع فيصل', url: 'https://www.facebook.com/RTC.Faisal/' },
-    'فرع 6 أكتوبر (الجيزة)': { name: 'فيسبوك فرع 6 أكتوبر 📢', desc: 'ورش العمل ومواعيد التدريب لفرع 6 أكتوبر', url: 'https://www.facebook.com/RTC.October/' },
-    'فرع سموحة (الإسكندرية)': { name: 'فيسبوك فرع سموحة (الإسكندرية) 📢', desc: 'صفحة فرع الإسكندرية لمتابعة الدورات المتاحة', url: 'https://www.facebook.com/RTC.Alex/' },
-    'فرع الجيزة — نصر الدين (الجيزة)': { name: 'فيسبوك فرع الجيزة (نصر الدين) 📢', desc: 'مواعيد الدورات بفرع عمارات نصر الدين بالجيزة', url: 'https://www.facebook.com/RTC.Giza/' }
-  };
-  const fbInfo = BRANCH_FB_LINKS[p.branch] || BRANCH_FB_LINKS['فرع مدينة نصر (القاهرة)'];
-  const fbBanner = document.getElementById('sh-fb-banner');
+  var fbBanner = document.getElementById('sh-fb-banner');
   if (fbBanner) {
-    fbBanner.href = fbInfo.url;
-    const fbTitle = fbBanner.querySelector('.fb-title'); if (fbTitle) fbTitle.textContent = fbInfo.name;
-    const fbDesc = fbBanner.querySelector('.fb-desc'); if (fbDesc) fbDesc.textContent = fbInfo.desc;
+    if (br && br.facebook_url) {
+      fbBanner.href = br.facebook_url;
+      fbBanner.classList.remove('hidden');
+      var ft = fbBanner.querySelector('.fb-title'); if (ft) ft.textContent = 'صفحة الفرع على فيسبوك';
+      var fd = fbBanner.querySelector('.fb-desc'); if (fd) fd.textContent = 'جداول المقابلات ومواعيد فتح المجموعات';
+    } else {
+      fbBanner.classList.add('hidden');
+    }
   }
 
-  // Load enrollments
-  const enrollments = await fetchMyEnrollments();
-  const next = document.getElementById('sh-next-lect');
+  var enrollments = [];
+  try { enrollments = await API.fetchMyEnrollments(); } catch (e) {}
+  var next = document.getElementById('sh-next-lect');
   if (next) {
     if (!enrollments.length) {
-      next.innerHTML = emptyState('ph-calendar-x','لا توجد محاضرات مجدولة','انضم لمجموعة تدريبية لتظهر مواعيدك هنا');
+      next.innerHTML = UI.emptyState('ph-calendar-x', 'لا توجد محاضرات مجدولة', 'انضم لمجموعة لتظهر مواعيدك');
     } else {
-      const e = enrollments[0];
-      const b = e.batches || {};
-      const c = b.courses || {};
-      next.innerHTML = `<div class="c-card" style="cursor:default">
-        <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-        <div class="flex-1">
-          <div class="text-sm font-bold">${esc(c.title||b.name||'—')}</div>
-          <div class="text-[11px]" style="color:var(--mut)">${esc(b.schedule||'')} · ${esc(b.branch||'')}</div>
-        </div>
-      </div>`;
+      var e0 = enrollments[0];
+      var b = e0.batches || {};
+      var c = b.courses || {};
+      next.innerHTML = '<div class="c-card" style="cursor:default">' +
+        '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+        '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
+        '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div></div></div>';
     }
   }
-
-  const list = document.getElementById('sh-courses');
+  var list = document.getElementById('sh-courses');
   if (list) {
-    if (!enrollments.length) {
-      list.innerHTML = emptyState('ph-book-open','لم تنضم لأي مجموعة بعد','استكشف المجموعات المتاحة وابدأ رحلتك', 'استكشف المجموعات', "push('s-explore')");
-    } else {
-      list.innerHTML = enrollments.slice(0,3).map(e => enrollmentCardHTML(e)).join('');
-    }
+    list.innerHTML = enrollments.length
+      ? enrollments.slice(0, 3).map(enrollmentCardHTML).join('')
+      : UI.emptyState('ph-book-open', 'لم تنضم لأي مجموعة', 'ابدأ من الاستكشاف', 'استكشف المجموعات', "push('s-explore')");
   }
-
-  // Badges
-  const badgesEl = document.getElementById('sh-badges');
+  var badgesEl = document.getElementById('sh-badges');
   if (badgesEl) {
-    const earned = (p.badge_ids||[]);
-    if (!earned.length) {
-      badgesEl.innerHTML = '<div class="text-[11px]" style="color:var(--mut)">لا توجد شارات بعد — ابدأ رحلتك!</div>';
-    } else {
-      badgesEl.innerHTML = earned.slice(-6).reverse().map(id => {
-        const b = BADGES_CATALOG.find(x => x.id===id);
-        if (!b) return '';
-        return `<div style="min-width:64px" class="flex flex-col items-center gap-1.5">
-          <div class="badge-ic" style="background:${esc(b.color)}"><i class="${esc(b.icon)}"></i></div>
-          <div class="text-[9.5px] font-bold text-center">${esc(b.name)}</div>
-        </div>`;
-      }).join('');
-    }
+    var earned = p.badge_ids || [];
+    badgesEl.innerHTML = earned.length ? earned.slice(-6).reverse().map(function (id) {
+      var bdg = BADGES_CATALOG.find(function (x) { return x.id === id; });
+      if (!bdg) return '';
+      return '<div style="min-width:64px" class="flex flex-col items-center gap-1.5"><div class="badge-ic" style="background:' + SEC.safeColor(bdg.color) + '"><i class="' + SEC.safeIcon(bdg.icon) + '"></i></div><div class="text-[9.5px] font-bold text-center">' + esc(bdg.name) + '</div></div>';
+    }).join('') : '<div class="text-[11px] text-muted">لا توجد شارات بعد</div>';
   }
 }
-
-function setEl(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
 
 function enrollmentCardHTML(e) {
-  const b = e.batches || {};
-  const c = b.courses || {};
-  const total = c.sessions_count || 1;
-  const done  = e.sessions_done || 0;
-  const pct   = Math.round((done/total)*100);
-  const completed = done >= total;
-  return `<div class="c-card" style="align-items:flex-start;cursor:default">
-    <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-    <div class="flex-1">
-      <div class="flex items-center justify-between">
-        <div class="text-sm font-bold">${esc(c.title||b.name||'—')}</div>
-        ${completed?'<span class="status-chip st-a">مكتملة ✓</span>':''}
-      </div>
-      <div class="text-[11px] mt-0.5" style="color:var(--mut)">${esc(b.name||'')} · ${esc(b.branch||'')}</div>
-      <div class="progress-track mt-2" style="height:6px;background:var(--line);border-radius:99px;overflow:hidden">
-        <div style="width:${pct}%;height:100%;background:var(--primary);border-radius:99px;transition:width .9s cubic-bezier(.16,1,.3,1)"></div>
-      </div>
-      <div class="text-[10px] mt-1" style="color:var(--mut)">${done} من ${total} محاضرة (${pct}%)</div>
-    </div>
-  </div>`;
+  var b = e.batches || {};
+  var c = b.courses || {};
+  var total = c.sessions_count || 1;
+  var done = e.sessions_done || 0;
+  var pct = Math.round((done / total) * 100);
+  var completed = done >= total;
+  var cid = c.id || '';
+  return '<div class="c-card" onclick="openCourseDetail(\'' + esc(cid) + '\')">' +
+    '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+    '<div class="flex-1"><div class="flex items-center justify-between"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
+    (completed ? '<span class="status-chip st-a">مكتملة ✓</span>' : '') + '</div>' +
+    '<div class="text-[11px] mt-0.5 text-muted">' + esc(b.name || '') + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
+    '<div class="progress-track mt-2"><div style="width:' + pct + '%;height:100%;background:var(--primary);border-radius:99px"></div></div>' +
+    '<div class="text-[10px] mt-1 text-muted">' + done + ' من ' + total + ' محاضرة (' + pct + '%)</div></div></div>';
 }
 
-/* ═══════════════ STUDENT COURSES ═══════════════ */
 async function renderStudentCourses() {
-  const list = document.getElementById('sc-list');
+  var list = document.getElementById('sc-list');
   if (!list) return;
-  list.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  const enrollments = await fetchMyEnrollments();
-  if (!enrollments.length) {
-    list.innerHTML = emptyState('ph-book-bookmark','لا توجد دورات مسجلة','اضغط استكشف للانضمام لمجموعة تدريبية','استكشف الآن',"push('s-explore')");
-    return;
+  list.innerHTML = UI.skeleton(3);
+  try {
+    var enrollments = await API.fetchMyEnrollments();
+    list.innerHTML = enrollments.length
+      ? enrollments.map(enrollmentCardHTML).join('')
+      : UI.emptyState('ph-book-bookmark', 'لا توجد دورات', 'استكشف المجموعات المتاحة', 'استكشف الآن', "push('s-explore')");
+  } catch (e) {
+    list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e), t('retry'), 'renderStudentCourses()');
   }
-  list.innerHTML = enrollments.map(e => enrollmentCardHTML(e)).join('');
 }
 
-let _exploreFilterText = '';
-let _exploreBranchFilter = '';
+function filterExploreCourses(text) { _exploreFilterText = (text || '').trim().toLowerCase(); renderExploreListFiltered(); }
+function setExploreBranchFilter(id) { _exploreBranchId = id; renderExploreListFiltered(); }
 
-function filterExploreCourses(text) {
-  _exploreFilterText = (text || '').trim().toLowerCase();
-  renderExploreListFiltered();
+function triggerExploreBranchPickerUI() {
+  var items = [{ value: '', label: 'جميع الفروع', sub: 'عرض كل المجموعات', badge: 'الكل', icon: 'ph-globe' }].concat(
+    _branches.map(function (b) { return { value: b.id, label: b.name_ar, sub: b.city, icon: 'ph-map-pin' }; })
+  );
+  UI.openPicker({
+    title: 'تصفية حسب الفرع', items: items, currentVal: _exploreBranchId,
+    onSelect: function (val, lbl) {
+      var txt = document.getElementById('explore-branch-val-txt'); if (txt) txt.textContent = lbl;
+      setExploreBranchFilter(val);
+    }
+  });
 }
 
-function setExploreBranchFilter(branch) {
-  _exploreBranchFilter = branch;
-  renderExploreListFiltered();
-}
+async function renderExplore() { renderExploreListFiltered(); }
 
 async function renderExploreListFiltered() {
-  const list = document.getElementById('explore-list');
+  var list = document.getElementById('explore-list');
   if (!list) return;
-  const targetBranch = _exploreBranchFilter || (CURRENT_PROFILE?.branch || 'الكل');
-  const [batches, myEnroll] = await Promise.all([
-    fetchBatches(true, targetBranch === 'الكل' ? null : targetBranch),
-    fetchMyEnrollments()
-  ]);
-  const myBatchIds = new Set(myEnroll.map(e => e.batch_id));
-  let available = batches.filter(b => !myBatchIds.has(b.id));
-
-  if (_exploreFilterText) {
-    available = available.filter(b => {
-      const c = b.courses || {};
-      const t = (c.title || b.name || '').toLowerCase();
-      const br = (b.branch || '').toLowerCase();
-      const cat = (c.category || '').toLowerCase();
-      return t.includes(_exploreFilterText) || br.includes(_exploreFilterText) || cat.includes(_exploreFilterText);
-    });
-  }
-
-  if (!available.length) {
-    list.innerHTML = emptyState('ph-magnifying-glass', `لم نجد مجموعات مطابقة في ${targetBranch}`, 'اختر فرعاً آخر أو تبديل البحث لعرض كافة الكورسات المتاحة');
-    return;
-  }
-
-  list.innerHTML = available.map(b => {
-    const c = b.courses || {};
-    return `<div class="c-card" style="align-items:flex-start;cursor:default">
-      <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-      <div class="flex-1">
-        <div class="flex items-center justify-between">
-          <div class="text-sm font-bold">${esc(c.title||b.name)}</div>
-          <span class="chip" style="padding:4px 10px;font-size:9.5px">${esc(c.category||'')}</span>
-        </div>
-        <div class="text-[11px] mt-1 text-teal font-bold">${esc(b.name)} · ${esc(b.branch)}</div>
-        <div class="text-[11px] mt-0.5" style="color:var(--mut)"><i class="ph-bold ph-calendar-blank"></i> ${esc(b.schedule||'')}</div>
-        <div class="text-[11px] mt-0.5" style="color:var(--mut)"><i class="ph-bold ph-chalkboard-teacher"></i> ${esc((b.profiles?.full_name)||b.instructor_name||'سيتم تحديده')}</div>
-        <button class="btn btn-primary btn-sm mt-2 w-full" onclick="joinBatch('${esc(b.id)}','${esc(c.id||'')}')"><i class="ph-bold ph-plus"></i> انضمام مجاني للمجموعة</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-async function renderExplore() {
-  renderExploreListFiltered();
-}
-
-async function joinBatch(batchId, courseId) {
-  if (!window.supabaseClient || !CURRENT_USER) { toast('يجب تسجيل الدخول أولاً','err'); return; }
+  list.innerHTML = UI.skeleton(4);
   try {
-    const { error } = await window.supabaseClient.from('enrollments').insert({
-      batch_id: batchId, course_id: courseId || null, student_id: CURRENT_USER.id, sessions_done: 0
-    });
-    if (error) {
-      if (error.code === '23505') { toast('أنت منضم بالفعل لهذه المجموعة','info'); return; }
-      throw error;
+    var pack = await Promise.all([API.fetchBatches(true, _exploreBranchId || null), API.fetchMyEnrollments()]);
+    var batches = pack[0], myEnroll = pack[1];
+    var mine = {};
+    myEnroll.forEach(function (e) { mine[e.batch_id] = true; });
+    var available = batches.filter(function (b) { return !mine[b.id]; });
+    if (_exploreFilterText) {
+      available = available.filter(function (b) {
+        var c = b.courses || {};
+        return [c.title, b.name, (b.branches && b.branches.name_ar), c.category].join(' ').toLowerCase().indexOf(_exploreFilterText) !== -1;
+      });
     }
-    // Award points
-    await window.supabaseClient.from('profiles').update({ points: (CURRENT_PROFILE.points||0) + 5 }).eq('id', CURRENT_USER.id);
-    if (CURRENT_PROFILE) CURRENT_PROFILE.points = (CURRENT_PROFILE.points||0) + 5;
-    await checkBadges();
-    _batchesCache = null;
-    toast('تم الانضمام للمجموعة بنجاح 🎉', 'ok');
-    renderExplore();
-  } catch(e) { toast('خطأ: ' + e.message, 'err'); }
-}
-
-/* ═══════════════ POINTS & BADGES ═══════════════ */
-async function renderPoints() {
-  if (!CURRENT_PROFILE) return;
-  // Refresh profile
-  if (window.supabaseClient && CURRENT_USER) {
-    const { data } = await window.supabaseClient.from('profiles').select('*').eq('id', CURRENT_USER.id).single();
-    if (data) CURRENT_PROFILE = data;
-  }
-  const p = CURRENT_PROFILE;
-  setEl('sp-pts', p.points||0);
-  const countEl = document.getElementById('sp-badges-count');
-  if (countEl) countEl.textContent = `(${(p.badge_ids||[]).length} من ${BADGES_CATALOG.length})`;
-  const badgesEl = document.getElementById('sp-badges');
-  if (badgesEl) {
-    badgesEl.innerHTML = BADGES_CATALOG.map(b => {
-      const earned = (p.badge_ids||[]).includes(b.id);
-      return `<div class="badge-tile card p-3 flex flex-col items-center text-center gap-1.5 cursor-pointer ${earned?'':'opacity-60'}"
-        style="border-radius:18px;position:relative" onclick="${earned?'':'showBadgeLocked(BADGES_CATALOG.find(x=>x.id===\''+b.id+'\'))'}">
-        <div style="position:relative;width:48px;height:48px;">
-          <div style="width:100%;height:100%;border-radius:16px;background:${esc(b.color)};display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;${earned?'':'filter:grayscale(0.85)'}">
-            <i class="${esc(b.icon)}"></i>
-          </div>
-          ${earned?'':`<div style="position:absolute;top:-5px;right:-5px;width:20px;height:20px;border-radius:50%;background:var(--card);border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);z-index:2"><i class="ph-fill ph-lock-key" style="font-size:11px;color:var(--red)"></i></div>`}
-        </div>
-        <div class="font-bold text-xs mt-1">${esc(b.name)}</div>
-        <div class="text-[10px]" style="color:var(--mut)">${esc(b.desc)}</div>
-      </div>`;
-    }).join('');
-  }
-}
-
-/* ═══════════════ CERTIFICATES ═══════════════ */
-async function renderCerts() {
-  const list = document.getElementById('scerts-list');
-  if (!list) return;
-  list.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  if (!window.supabaseClient || !CURRENT_USER) { list.innerHTML = emptyState('ph-warning','يتطلب تسجيل دخول',''); return; }
-  try {
-    const { data, error } = await window.supabaseClient
-      .from('certs')
-      .select('*, courses(title, icon, color)')
-      .eq('student_id', CURRENT_USER.id)
-      .order('issued_at', { ascending: false });
-    if (error) throw error;
-    if (!data?.length) {
-      list.innerHTML = emptyState('ph-certificate','لا توجد شهادات بعد','يجب تسجيل المتطوع حضورك في جميع محاضرات دورة كاملة لإصدار الشهادة');
+    if (!available.length) {
+      list.innerHTML = UI.emptyState('ph-magnifying-glass', 'لا توجد مجموعات مطابقة', 'جرّب فرعاً آخر أو أزل البحث');
       return;
     }
-    list.innerHTML = data.map(cert => {
-      const c = cert.courses || {};
-      return `<div class="card p-4 flex items-center gap-3">
-        <div class="pick-ic" style="background:linear-gradient(135deg,${esc(c.color||'#00288e')},#d4af37)"><i class="ph-fill ph-certificate"></i></div>
-        <div class="flex-1">
-          <div class="text-sm font-bold">${esc(c.title||'دورة تدريبية')}</div>
-          <div class="text-[11px]" style="color:var(--mut)">شهادة إتمام معتمدة — مركز رسالة</div>
-          <div class="text-[10px] mt-0.5" style="color:var(--mut)" dir="ltr"># ${esc(cert.serial_number)}</div>
-        </div>
-        <button class="btn btn-teal btn-sm" onclick="downloadCertificate('${esc(cert.id)}','${esc(c.title||'')}')"><i class="ph-bold ph-download-simple"></i> PDF</button>
-      </div>`;
+    list.innerHTML = available.map(function (b) {
+      var c = b.courses || {};
+      return '<div class="c-card" style="align-items:flex-start">' +
+        '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+        '<div class="flex-1"><div class="flex items-center justify-between"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
+        '<span class="chip" style="padding:4px 10px;font-size:9.5px">' + esc(c.category || '') + '</span></div>' +
+        '<div class="text-[11px] mt-1 text-teal font-bold">' + esc(b.name) + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
+        '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-calendar-blank"></i> ' + esc(b.schedule || '') + '</div>' +
+        '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-chalkboard-teacher"></i> ' + esc((b.profiles && b.profiles.full_name) || 'سيُحدد لاحقاً') + '</div>' +
+        '<div class="flex gap-2 mt-2"><button class="btn btn-primary btn-sm flex-1" onclick="joinBatch(\'' + esc(b.id) + '\')"><i class="ph-bold ph-plus"></i> انضمام مجاني</button>' +
+        '<button class="btn btn-soft btn-sm" onclick="openCourseDetail(\'' + esc(c.id || '') + '\')">التفاصيل</button></div></div></div>';
     }).join('');
-  } catch(e) { list.innerHTML = emptyState('ph-warning','خطأ في تحميل الشهادات',e.message); }
-}
-
-function downloadCertificate(certId, courseTitle) {
-  if (!CURRENT_PROFILE) return;
-  toast('جارٍ تجهيز الشهادة...','info','ph-hourglass-medium');
-  setTimeout(() => generateCertificatePDF({ title: courseTitle, id: certId }, CURRENT_PROFILE.full_name), 250);
-}
-
-function generateCertificatePDF(course, studentName) {
-  const W=1600, H=1131;
-  const cvs = document.createElement('canvas'); cvs.width=W; cvs.height=H;
-  const ctx = cvs.getContext('2d');
-  const grad = ctx.createLinearGradient(0,0,W,H);
-  grad.addColorStop(0,'#001a6b'); grad.addColorStop(.55,'#00288e'); grad.addColorStop(1,'#003c36');
-  ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
-  const pad=46;
-  ctx.fillStyle='#fbfcff'; roundRect(ctx,pad,pad,W-pad*2,H-pad*2,26); ctx.fill();
-  ctx.strokeStyle='#d4af37'; ctx.lineWidth=4; roundRect(ctx,pad+18,pad+18,W-pad*2-36,H-pad*2-36,18); ctx.stroke();
-  ctx.textAlign='center'; ctx.direction='rtl';
-  ctx.beginPath(); ctx.arc(W/2,168,54,0,Math.PI*2);
-  const lg=ctx.createLinearGradient(W/2-54,120,W/2+54,220); lg.addColorStop(0,'#00288e'); lg.addColorStop(1,'#00554e');
-  ctx.fillStyle=lg; ctx.fill();
-  ctx.fillStyle='#fff'; ctx.font='800 46px Inter,sans-serif'; ctx.fillText('R',W/2,185);
-  ctx.fillStyle='#0f1420'; ctx.font='700 30px "IBM Plex Sans Arabic",sans-serif'; ctx.fillText('مركز رسالة للتنمية والتطوير',W/2,262);
-  ctx.font='800 62px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#00288e'; ctx.fillText('شهادة إتمام دورة تدريبية',W/2,360);
-  ctx.font='400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#667085'; ctx.fillText('تشهد إدارة مركز رسالة للتنمية والتطوير بأن الطالب/ة',W/2,460);
-  ctx.font='800 54px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#0f1420'; ctx.fillText(studentName,W/2,540);
-  ctx.font='400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#667085'; ctx.fillText('قد أتم / أتمت بنجاح متطلبات دورة',W/2,610);
-  ctx.font='700 40px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#00554e'; ctx.fillText(course.title,W/2,668);
-  ctx.font='400 22px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#667085';
-  const dateStr = new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'});
-  ctx.fillText('بتاريخ ' + dateStr,W/2,712);
-  ctx.strokeStyle='#e3e7f0'; ctx.lineWidth=2;
-  ctx.beginPath(); ctx.moveTo(pad+120,H-190); ctx.lineTo(W-pad-120,H-190); ctx.stroke();
-  ctx.font='700 24px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#0f1420';
-  ctx.fillText('إدارة مركز رسالة',W/2+380,H-140);
-  ctx.font='400 18px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle='#667085';
-  ctx.fillText('اعتماد الشهادة',W/2+380,H-108);
-  ctx.font='400 16px monospace'; ctx.fillStyle='#a3abbf';
-  ctx.fillText('RTC-CERT-' + (course.id||'').toString().toUpperCase().slice(0,8),W/2,H-56);
-
-  if (window.jspdf?.jsPDF) {
-    const doc = new jspdf.jsPDF({orientation:'landscape',unit:'px',format:[W,H]});
-    doc.addImage(cvs.toDataURL('image/png'),'PNG',0,0,W,H);
-    doc.save('شهادة - ' + course.title + '.pdf');
-    toast('تم تحميل الشهادة ✓','ok','ph-download-simple');
-  } else {
-    const a = document.createElement('a'); a.href=cvs.toDataURL('image/png'); a.download='شهادة - '+course.title+'.png'; a.click();
-    toast('تم استخراج الشهادة ✓','ok','ph-download-simple');
+  } catch (e) {
+    list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e), t('retry'), 'renderExplore()');
   }
 }
 
-function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-
-/* ═══════════════ PRO TOOLS & HELPERS ═══════════════ */
-function exportToCSV(filename, headers, rows) {
-  let csvContent = '\uFEFF' + headers.join(',') + '\n';
-  rows.forEach(rowArray => {
-    let row = rowArray.map(val => `"${String(val||'').replace(/"/g, '""')}"`).join(',');
-    csvContent += row + '\n';
-  });
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  toast('تم تصدير ملف CSV بنجاح 📊', 'ok', 'ph-file-csv');
+async function joinBatch(batchId) {
+  if (!SEC.isUuid(batchId)) return;
+  UI.showConfirm('الانضمام لهذه المجموعة؟', 'سيظهر اسمك في كشف المتطوع، وستُحتسب نقاط الانضمام.', async function () {
+    try {
+      var r = await API.joinBatch(batchId);
+      API.invalidate();
+      if (r && r.status === 'waitlisted') toast(t('waitlisted'), 'warn');
+      else if (r && r.status === 'already') toast(t('alreadyIn'), 'info');
+      else { UI.fireConfetti(30); toast(t('joinOk'), 'ok'); }
+      if (CURRENT_PROFILE) {
+        try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {}
+      }
+      renderExplore();
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { danger: false, yesLabel: 'تأكيد الانضمام' });
 }
 
-function exportBatchRosterCSV() {
-  if (!_currentBatch || !_batchStudents.length) { toast('لا توجد بيانات للتصدير','err'); return; }
-  const headers = ['اسم الطالب', 'رقم الهاتف', 'المحاضرات المنجزة', 'الفرع'];
-  const rows = _batchStudents.map(e => [
-    (e.profiles||{}).full_name || '—',
-    (e.profiles||{}).phone || '—',
-    e.sessions_done || 0,
-    _currentBatch.branch || '—'
-  ]);
-  exportToCSV(`حضور_${_currentBatch.name}.csv`, headers, rows);
+function openCourseDetail(id) {
+  if (!id) return;
+  _detailCourseId = id;
+  push('s-course-detail');
+}
+
+async function renderCourseDetail() {
+  var body = document.getElementById('cd-body');
+  if (!body) return;
+  if (!_detailCourseId) { body.innerHTML = UI.emptyState('ph-book', 'اختر دورة', ''); return; }
+  body.innerHTML = UI.skeleton(3);
+  try {
+    var d = await API.fetchCourseDetail(_detailCourseId);
+    var c = d.course;
+    var avg = 0;
+    if (d.ratings.length) avg = d.ratings.reduce(function (s, r) { return s + r.rating; }, 0) / d.ratings.length;
+    body.innerHTML =
+      '<div class="grad-hero p-5 rounded-3xl text-white shadow-xl">' +
+        '<div class="text-xs text-white/70">' + esc(c.category || '') + ' · ' + esc((c.branches && c.branches.name_ar) || '') + '</div>' +
+        '<div class="text-xl font-bold mt-1">' + esc(c.title) + '</div>' +
+        '<div class="text-xs text-white/80 mt-2">' + esc(c.description || 'دورة مجانية معتمدة من مركز رسالة.') + '</div>' +
+        '<div class="flex gap-2 mt-3 text-xs"><span class="chip bg-white/15 text-white border-white/20">' + (c.sessions_count || 8) + ' محاضرات</span>' +
+        '<span class="chip bg-white/15 text-white border-white/20">' + esc(c.level || 'الكل') + '</span>' +
+        (avg ? '<span class="chip bg-white/15 text-white border-white/20">★ ' + avg.toFixed(1) + '</span>' : '') + '</div></div>' +
+      '<div class="sec-t">المجموعات المتاحة</div>' +
+      (d.batches.length ? d.batches.map(function (b) {
+        return '<div class="c-card"><div class="flex-1"><div class="text-sm font-bold">' + esc(b.name) + '</div>' +
+          '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + ' · ' + esc((b.profiles && b.profiles.full_name) || 'محاضر لاحقاً') + '</div></div>' +
+          '<button class="btn btn-primary btn-sm" onclick="joinBatch(\'' + esc(b.id) + '\')">انضمام</button></div>';
+      }).join('') : UI.emptyState('ph-users', 'لا مجموعات بعد', 'ترقب الافتتاح')) +
+      '<div class="sec-t mt-4">قيّم الدورة</div>' +
+      '<div class="card p-3 flex flex-col gap-2"><div class="flex gap-1" id="rate-stars">' +
+        [1, 2, 3, 4, 5].map(function (n) { return '<button class="text-2xl" onclick="submitRating(' + n + ')">☆</button>'; }).join('') +
+      '</div><textarea class="inp" id="rate-comment" rows="2" placeholder="تعليق اختياري (يظهر للمشرف)"></textarea></div>' +
+      (d.ratings.length ? '<div class="sec-t mt-3">آراء الزملاء</div>' + d.ratings.map(function (r) {
+        return '<div class="card p-3 mb-2 text-xs"><div class="font-bold">★ ' + r.rating + '/5</div><div class="text-muted mt-1">' + esc(r.comment || '') + '</div></div>';
+      }).join('') : '');
+  } catch (e) {
+    body.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e));
+  }
+}
+
+async function submitRating(n) {
+  try {
+    var comment = (document.getElementById('rate-comment') || {}).value || '';
+    await API.rateCourse(_detailCourseId, n, comment);
+    toast('شكراً لتقييمك ⭐', 'ok');
+    renderCourseDetail();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+async function renderPoints() {
+  if (!CURRENT_PROFILE) return;
+  try { CURRENT_PROFILE = await API.fetchMyProfile() || CURRENT_PROFILE; } catch (e) {}
+  var p = CURRENT_PROFILE;
+  setEl('sp-pts', p.points || 0);
+  var countEl = document.getElementById('sp-badges-count');
+  if (countEl) countEl.textContent = '(' + (p.badge_ids || []).length + ' من ' + BADGES_CATALOG.length + ')';
+  var badgesEl = document.getElementById('sp-badges');
+  if (badgesEl) {
+    badgesEl.innerHTML = BADGES_CATALOG.map(function (b) {
+      var earned = (p.badge_ids || []).indexOf(b.id) !== -1;
+      return '<div class="badge-tile card p-3 flex flex-col items-center text-center gap-1.5 ' + (earned ? '' : 'opacity-60') + '" onclick="' + (earned ? '' : 'showBadgeLocked(\'' + b.id + '\')') + '">' +
+        '<div style="position:relative;width:48px;height:48px"><div style="width:100%;height:100%;border-radius:16px;background:' + SEC.safeColor(b.color) + ';display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;' + (earned ? '' : 'filter:grayscale(.85)') + '"><i class="' + SEC.safeIcon(b.icon) + '"></i></div>' +
+        (earned ? '' : '<div class="lock-dot"><i class="ph-fill ph-lock-key"></i></div>') + '</div>' +
+        '<div class="font-bold text-xs mt-1">' + esc(b.name) + '</div><div class="text-[10px] text-muted">' + esc(b.desc) + '</div></div>';
+    }).join('');
+  }
+}
+
+function showBadgeLocked(id) {
+  var badge = BADGES_CATALOG.find(function (b) { return b.id === id; });
+  if (!badge) return;
+  UI.openSheet(
+    '<div class="modal-sheet text-center" style="padding-top:8px"><div class="modal-handle"></div>' +
+    '<div class="badge-ic mx-auto mb-3" style="background:' + SEC.safeColor(badge.color) + ';filter:grayscale(1);opacity:.6"><i class="' + SEC.safeIcon(badge.icon) + '"></i></div>' +
+    '<div class="text-xs text-muted mb-1">🔒 شارة مقفلة</div><h3 class="text-lg font-extrabold">' + esc(badge.name) + '</h3>' +
+    '<p class="text-xs text-muted mt-1 mb-3">' + esc(badge.desc) + '</p>' +
+    '<div class="card p-3 text-xs font-bold text-primary inline-flex gap-2"><i class="ph-fill ph-lightbulb"></i> ' + esc(badge.unlock) + '</div>' +
+    '<button class="btn btn-primary btn-mid w-full mt-4" data-close>حسناً</button></div>'
+  );
+}
+
+async function renderLedger() {
+  var el = document.getElementById('ledger-list');
+  if (!el) return;
+  el.innerHTML = UI.skeleton(4);
+  try {
+    var rows = await API.fetchLedger();
+    el.innerHTML = rows.length ? rows.map(function (r) {
+      var title = (r.points_rules && r.points_rules.title) || r.reason || 'حركة نقاط';
+      var sign = r.amount >= 0 ? '+' : '';
+      return '<div class="card p-3 mb-2 flex justify-between items-center"><div><div class="text-sm font-bold">' + esc(title) + '</div>' +
+        '<div class="text-[10px] text-muted">' + new Date(r.created_at).toLocaleString('ar-EG') + '</div></div>' +
+        '<div class="font-extrabold" style="color:var(--teal)">' + sign + r.amount + '</div></div>';
+    }).join('') : UI.emptyState('ph-coins', 'لا حركات بعد', 'سجّل حضورك لتبدأ النقاط');
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+async function renderCerts() {
+  var list = document.getElementById('scerts-list');
+  if (!list) return;
+  list.innerHTML = UI.skeleton(2);
+  try {
+    var data = await API.fetchCerts(true);
+    if (!data.length) {
+      list.innerHTML = UI.emptyState('ph-certificate', 'لا شهادات بعد', 'أكمل حضور الدورة ليصدر المتطوع شهادتك');
+      return;
+    }
+    list.innerHTML = data.map(function (cert) {
+      var c = cert.courses || {};
+      return '<div class="card p-4 flex items-center gap-3"><div class="pick-ic" style="background:linear-gradient(135deg,' + SEC.safeColor(c.color) + ',#d4af37)"><i class="ph-fill ph-certificate"></i></div>' +
+        '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title || 'دورة') + '</div>' +
+        '<div class="text-[11px] text-muted">شهادة إتمام — مركز رسالة</div>' +
+        '<div class="text-[10px] mt-0.5 text-muted" dir="ltr"># ' + esc(cert.serial_number) + '</div></div>' +
+        '<button class="btn btn-teal btn-sm" onclick="downloadCertificate(\'' + esc(cert.serial_number) + '\',\'' + esc(c.title || '') + '\',\'' + (cert.issued_at || '') + '\')"><i class="ph-bold ph-download-simple"></i> PDF</button></div>';
+    }).join('');
+  } catch (e) { list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+function downloadCertificate(serial, title, issued) {
+  if (!CURRENT_PROFILE) return;
+  toast('جارٍ تجهيز الشهادة...', 'info');
+  setTimeout(function () { generateCertificatePDF(title, CURRENT_PROFILE.full_name, serial, issued); }, 200);
+}
+
+function generateCertificatePDF(courseTitle, studentName, serial, issued) {
+  var W = 1600, H = 1131;
+  var cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H;
+  var ctx = cvs.getContext('2d');
+  var grad = ctx.createLinearGradient(0, 0, W, H);
+  grad.addColorStop(0, '#001a6b'); grad.addColorStop(0.55, '#00288e'); grad.addColorStop(1, '#003c36');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  var pad = 46;
+  ctx.fillStyle = '#fbfcff'; roundRect(ctx, pad, pad, W - pad * 2, H - pad * 2, 26); ctx.fill();
+  ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 4; roundRect(ctx, pad + 18, pad + 18, W - pad * 2 - 36, H - pad * 2 - 36, 18); ctx.stroke();
+  ctx.textAlign = 'center'; ctx.direction = 'rtl';
+  ctx.beginPath(); ctx.arc(W / 2, 168, 54, 0, Math.PI * 2);
+  var lg = ctx.createLinearGradient(W / 2 - 54, 120, W / 2 + 54, 220); lg.addColorStop(0, '#00288e'); lg.addColorStop(1, '#00554e');
+  ctx.fillStyle = lg; ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = '800 46px Inter,sans-serif'; ctx.fillText('R', W / 2, 185);
+  ctx.fillStyle = '#0f1420'; ctx.font = '700 30px "IBM Plex Sans Arabic",sans-serif'; ctx.fillText('مركز رسالة للتنمية والتطوير', W / 2, 262);
+  ctx.font = '800 62px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#00288e'; ctx.fillText('شهادة إتمام دورة تدريبية', W / 2, 360);
+  ctx.font = '400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('تشهد إدارة مركز رسالة للتنمية والتطوير بأن الطالب/ة', W / 2, 460);
+  ctx.font = '800 54px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#0f1420'; ctx.fillText(studentName, W / 2, 540);
+  ctx.font = '400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('قد أتم / أتمت بنجاح متطلبات دورة', W / 2, 610);
+  ctx.font = '700 40px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#00554e'; ctx.fillText(courseTitle || '—', W / 2, 668);
+  var dateStr = issued ? new Date(issued).toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+  ctx.font = '400 22px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('بتاريخ ' + dateStr, W / 2, 712);
+  ctx.font = '600 18px monospace'; ctx.fillStyle = '#667085'; ctx.fillText(serial || '', W / 2, H - 64);
+  var verifyUrl = location.origin + location.pathname.replace(/index\.html$/, '') + 'verify.html?s=' + encodeURIComponent(serial || '');
+  if (window.QRCode && QRCode.toCanvas) {
+    var qrc = document.createElement('canvas');
+    QRCode.toCanvas(qrc, verifyUrl, { width: 140, margin: 0 }, function () {
+      ctx.drawImage(qrc, W / 2 - 380, H - 230, 120, 120);
+      finishCert(cvs, courseTitle);
+    });
+  } else {
+    finishCert(cvs, courseTitle);
+  }
+}
+
+function finishCert(cvs, courseTitle) {
+  var W = cvs.width, H = cvs.height;
+  if (window.jspdf && window.jspdf.jsPDF) {
+    var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'px', format: [W, H] });
+    doc.addImage(cvs.toDataURL('image/png'), 'PNG', 0, 0, W, H);
+    doc.save('شهادة - ' + (courseTitle || 'RTC') + '.pdf');
+    toast('تم تحميل الشهادة ✓', 'ok');
+  } else {
+    var a = document.createElement('a'); a.href = cvs.toDataURL('image/png'); a.download = 'شهادة.png'; a.click();
+    toast('تم استخراج الشهادة ✓', 'ok');
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
 }
 
 function openVerifyCertModal() {
-  let old = document.getElementById('modal-verify-cert'); if (old) old.remove();
-  const modal = document.createElement('div');
-  modal.id = 'modal-verify-cert'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center text-xl font-bold"><i class="ph-bold ph-shield-check"></i></div>
-        <div><h3 class="text-base font-bold">التحقق المباشر من صحة الشهادة</h3><p class="text-xs text-muted">أدخل الكود التسلسلي المكتوب على الشهادة</p></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div><label class="lbl">كود الشهادة التسلسلي (Serial Number) <b>*</b></label><input class="inp font-mono" id="vc-code" type="text" placeholder="RTC-CERT-XXXXXX" dir="ltr" style="text-align:left"></div>
-        <div id="vc-result" class="hidden"></div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="vc-close">إغلاق</button>
-        <button class="btn btn-primary btn-mid flex-1" onclick="verifyCertCode()"><i class="ph-bold ph-magnifying-glass"></i> تحقق الآن</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#vc-close').onclick = () => modal.remove();
+  UI.openSheet(
+    '<div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px"><div class="modal-handle"></div>' +
+    '<div class="flex items-center gap-3 border-b border-line pb-3"><div class="w-10 h-10 rounded-xl bg-primary-soft text-primary flex items-center justify-center"><i class="ph-bold ph-shield-check"></i></div>' +
+    '<div><h3 class="text-base font-bold">التحقق من الشهادة</h3><p class="text-xs text-muted">أدخل الرقم التسلسلي — بلا بيانات حساسة أخرى</p></div></div>' +
+    '<input class="inp font-mono" id="vc-code" dir="ltr" placeholder="RTC-XXXXXXXXXX" style="text-align:left">' +
+    '<div id="vc-result"></div>' +
+    '<div class="flex gap-2"><button class="btn btn-soft btn-mid flex-1" data-close>إغلاق</button>' +
+    '<button class="btn btn-primary btn-mid flex-1" onclick="verifyCertCode()"><i class="ph-bold ph-magnifying-glass"></i> تحقق</button></div></div>',
+    'modal-verify-cert'
+  );
 }
 
 async function verifyCertCode() {
-  const code = document.getElementById('vc-code')?.value.trim();
-  const res = document.getElementById('vc-result');
-  if (!code) { toast('أدخل كود الشهادة أولاً','err'); return; }
-  if (!res) return;
-  res.classList.remove('hidden');
-  res.innerHTML = '<div class="text-xs text-muted text-center py-2"><i class="ph-bold ph-spinner" style="animation:spin 1s linear infinite"></i> جارٍ التحقق من قاعدة البيانات...</div>';
-
-  if (!window.supabaseClient) {
-    res.innerHTML = '<div class="g-status err"><i class="ph-bold ph-x-circle"></i> يتطلب الاتصال بـ Supabase</div>';
-    return;
-  }
+  var code = (document.getElementById('vc-code') || {}).value;
+  var res = document.getElementById('vc-result');
+  if (!code || !res) { toast('أدخل كود الشهادة', 'err'); return; }
+  res.innerHTML = '<div class="text-xs text-muted text-center py-2">جارٍ التحقق...</div>';
   try {
-    const { data, error } = await window.supabaseClient.rpc('verify_certificate', { p_serial: code });
-    if (error) throw error;
-    if (data && data.length > 0 && data[0].is_valid) {
-      const v = data[0];
-      res.innerHTML = `
-        <div class="card p-3 bg-teal-50 border-teal-200 text-teal-900 flex flex-col gap-1 text-xs">
-          <div class="font-bold text-sm text-teal-700 flex items-center gap-1.5"><i class="ph-fill ph-check-circle"></i> شهادة موثقة وصحيحة 100% ✓</div>
-          <div><b>اسم الطالب:</b> ${esc(v.student_name)}</div>
-          <div><b>الدورة التدريبية:</b> ${esc(v.course_title)}</div>
-          <div><b>تاريخ الإصدار:</b> ${new Date(v.issued_date).toLocaleDateString('ar-EG')}</div>
-        </div>`;
+    var data = await API.verifyCert(code.trim());
+    if (data && data.length && data[0].is_valid) {
+      var v = data[0];
+      res.innerHTML = '<div class="card p-3 text-xs" style="border-color:rgba(0,85,78,.3)"><div class="font-bold text-sm" style="color:var(--teal)">شهادة موثقة ✓</div>' +
+        '<div class="mt-1"><b>الاسم:</b> ' + esc(v.student_name) + '</div><div><b>الدورة:</b> ' + esc(v.course_title) + '</div>' +
+        '<div><b>تاريخ الإصدار:</b> ' + new Date(v.issued_date).toLocaleDateString('ar-EG') + '</div></div>';
     } else {
-      res.innerHTML = '<div class="card p-3 bg-red-50 border-red-200 text-red-800 text-xs font-bold flex items-center gap-1.5"><i class="ph-fill ph-warning-circle"></i> كود غير صحيح أو لم يظهر في السجلات</div>';
+      res.innerHTML = '<div class="card p-3 text-xs font-bold" style="color:var(--red)">الكود غير مسجّل</div>';
     }
-  } catch(e) {
-    res.innerHTML = `<div class="card p-3 bg-red-50 text-red-800 text-xs">خطأ: ${esc(e.message)}</div>`;
-  }
+  } catch (e) { res.innerHTML = '<div class="text-xs" style="color:var(--red)">' + esc(UI.humanError(e)) + '</div>'; }
 }
 
-// Network Online/Offline Banner Alerts
-window.addEventListener('online', () => toast('تم استعادة الاتصال بالسحابة 🟢', 'ok'));
-window.addEventListener('offline', () => toast('انقطع الاتصال — تعمل الآن في وضع الأوفلاين 🟡', 'warn'));
-
-/* ═══════════════ STUDENT PROFILE ═══════════════ */
 async function renderProfile() {
   if (!CURRENT_PROFILE) return;
-  // Refresh
-  if (window.supabaseClient && CURRENT_USER) {
-    const { data } = await window.supabaseClient.from('profiles').select('*').eq('id', CURRENT_USER.id).single();
-    if (data) CURRENT_PROFILE = data;
-  }
-  const p = CURRENT_PROFILE;
-  const av = document.getElementById('pf-av'); if (av) av.innerHTML = avatarHTML(p);
+  try { CURRENT_PROFILE = await API.fetchMyProfile() || CURRENT_PROFILE; } catch (e) {}
+  var p = CURRENT_PROFILE;
+  var br = branchOf(p);
+  var av = document.getElementById('pf-av'); if (av) av.innerHTML = UI.avatarHTML(p);
   setEl('pf-name', p.full_name);
-  setEl('pf-branch', p.branch);
+  setEl('pf-branch', (br && br.name_ar) || '');
   setEl('pf-phone', p.phone || '—');
-  setEl('pf-branch2', p.branch);
-  setEl('pf-email', p.email || 'غير مسجل بريد');
-  setEl('pf-google', p.via_google ? 'موثق عبر Google ✓' : 'حساب محلي');
-  setEl('pf-cloud', window.supabaseClient ? 'Supabase متزامن ✓' : 'محلي');
-
-  // Render Smart Digital Student Card if container exists or prepend
-  let cardBox = document.getElementById('pf-smart-card');
+  setEl('pf-branch2', (br && br.name_ar) || '');
+  setEl('pf-email', p.email || '—');
+  setEl('pf-google', 'موثق عبر Google ✓');
+  setEl('pf-cloud', window.supabaseClient ? 'متزامن مع السحابة ✓' : 'غير متصل');
+  var cardBox = document.getElementById('pf-smart-card');
   if (!cardBox) {
-    const pfBody = document.querySelector('#screen-s-profile .scr-body');
+    var pfBody = document.querySelector('#screen-s-profile .scr-body');
     if (pfBody) {
-      const div = document.createElement('div');
-      div.id = 'pf-smart-card';
-      div.className = 'mb-3';
+      var div = document.createElement('div');
+      div.id = 'pf-smart-card'; div.className = 'mb-3';
       pfBody.insertBefore(div, pfBody.firstChild);
       cardBox = div;
     }
   }
   if (cardBox) {
-    cardBox.innerHTML = `
-      <div class="p-4 rounded-3xl text-white shadow-xl relative overflow-hidden" style="background:linear-gradient(135deg,#001a6b 0%,#00288e 55%,#00554e 100%)">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-[10px] text-white/70">جمعية رسالة — مركز التدريب والتطوير</div>
-            <div class="text-base font-bold mt-1">${esc(p.full_name)}</div>
-            <div class="text-xs text-white/80 mt-0.5">${esc(p.branch||'')}</div>
-          </div>
-          <div class="avatar w-11 h-11 text-xs border-2 border-white/30 shadow-md">${avatarHTML(p)}</div>
-        </div>
-        <div class="flex justify-between items-end mt-4 pt-3 border-t border-white/20 text-xs">
-          <div><div class="text-[9px] text-white/60">كود العضوية</div><div class="font-mono font-bold" dir="ltr">RTC-${(p.id||'').slice(0,8).toUpperCase()}</div></div>
-          <div><div class="text-[9px] text-white/60">المستوى</div><div class="font-bold">${Math.max(1, Math.floor((p.points||0)/150)+1)} ⭐</div></div>
-          <div><div class="text-[9px] text-white/60">النقاط</div><div class="font-bold">${p.points||0} ن</div></div>
-        </div>
-      </div>`;
+    cardBox.innerHTML = '<div class="p-4 rounded-3xl text-white shadow-xl" style="background:linear-gradient(135deg,#001a6b,#00288e 55%,#00554e)">' +
+      '<div class="flex justify-between"><div><div class="text-[10px] text-white/70">جمعية رسالة — مركز التدريب</div>' +
+      '<div class="text-base font-bold mt-1">' + esc(p.full_name) + '</div><div class="text-xs text-white/80">' + esc((br && br.name_ar) || '') + '</div></div>' +
+      '<div class="avatar w-11 h-11 text-xs border-2 border-white/30">' + UI.avatarHTML(p) + '</div></div>' +
+      '<div class="flex justify-between mt-4 pt-3 border-t border-white/20 text-xs">' +
+      '<div><div class="text-[9px] text-white/60">العضوية</div><div class="font-mono font-bold" dir="ltr">RTC-' + esc(String(p.id || '').slice(0, 8).toUpperCase()) + '</div></div>' +
+      '<div><div class="text-[9px] text-white/60">المستوى</div><div class="font-bold">' + Math.max(1, Math.floor((p.points || 0) / 150) + 1) + ' ⭐</div></div>' +
+      '<div><div class="text-[9px] text-white/60">النقاط</div><div class="font-bold">' + (p.points || 0) + '</div></div></div></div>';
   }
 }
 
 function renderEditProfile() {
   if (!CURRENT_PROFILE) return;
-  const p = CURRENT_PROFILE;
-  const av = document.getElementById('ep-av');
-  if (av) av.innerHTML = avatarHTML(p) + '<span class="av-cam"><i class="ph-bold ph-camera"></i></span>';
-  const n = document.getElementById('ep-name'); if (n) n.value = p.full_name;
-  const ph = document.getElementById('ep-phone'); if (ph) ph.value = p.phone || '';
-  const br = document.getElementById('ep-branch'); if (br) br.value = p.branch || '';
+  var p = CURRENT_PROFILE;
+  var av = document.getElementById('ep-av');
+  if (av) av.innerHTML = UI.avatarHTML(p) + '<span class="av-cam"><i class="ph-bold ph-camera"></i></span>';
+  var n = document.getElementById('ep-name'); if (n) n.value = p.full_name || '';
+  var ph = document.getElementById('ep-phone'); if (ph) ph.value = p.phone || '';
+  var br = document.getElementById('ep-branch'); if (br) br.value = p.branch_id || '';
+  var txt = document.getElementById('ep-branch-val-txt');
+  var b = branchOf(p);
+  if (txt) txt.textContent = (b && b.name_ar) || 'اختر الفرع';
 }
 
-function editAvatar(event) {
-  const file = event.target.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    if (CURRENT_PROFILE) CURRENT_PROFILE.avatar_url = e.target.result;
-    const av = document.getElementById('ep-av');
-    if (av) av.innerHTML = `<img src="${e.target.result}"><span class="av-cam"><i class="ph-bold ph-camera"></i></span>`;
-  };
-  reader.readAsDataURL(file);
+function triggerEditProfileBranchPickerUI() {
+  openBranchPicker(document.getElementById('ep-branch') && document.getElementById('ep-branch').value, function (id, label) {
+    var h = document.getElementById('ep-branch'); if (h) h.value = id;
+    var tEl = document.getElementById('ep-branch-val-txt'); if (tEl) tEl.textContent = label;
+  });
+}
+
+async function editAvatar(event) {
+  var file = event.target.files && event.target.files[0];
+  if (!file) return;
+  try {
+    toast('جارٍ رفع الصورة...', 'info');
+    var url = await API.uploadAvatar(file);
+    CURRENT_PROFILE.avatar_url = url;
+    var av = document.getElementById('ep-av');
+    if (av) av.innerHTML = '<img src="' + esc(url) + '" alt=""><span class="av-cam"><i class="ph-bold ph-camera"></i></span>';
+    toast('تم تحديث الصورة', 'ok');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
 async function saveEditProfile() {
-  if (!CURRENT_PROFILE) return;
-  const name  = document.getElementById('ep-name')?.value.trim();
-  const phone = document.getElementById('ep-phone')?.value.trim();
-  const branch= document.getElementById('ep-branch')?.value;
-  if (name.split(/\s+/).filter(Boolean).length < 2) { toast('يرجى إدخال اسم صحيح','err'); return; }
-  if (!/^01[0125][0-9]{8}$/.test(phone)) { toast('رقم الهاتف غير صحيح','err'); return; }
-  CURRENT_PROFILE.full_name = name; CURRENT_PROFILE.phone = phone; CURRENT_PROFILE.branch = branch;
-  if (window.supabaseClient && CURRENT_USER) {
-    const { error } = await window.supabaseClient.from('profiles').update({
-      full_name: name, phone, branch, avatar_url: CURRENT_PROFILE.avatar_url, updated_at: new Date().toISOString()
-    }).eq('id', CURRENT_USER.id);
-    if (error) { toast('خطأ في الحفظ: ' + error.message, 'err'); return; }
-  }
-  toast('تم حفظ التعديلات بنجاح ✓','ok');
-  pop();
+  var name = (document.getElementById('ep-name') || {}).value || '';
+  var phone = (document.getElementById('ep-phone') || {}).value || '';
+  var branch = (document.getElementById('ep-branch') || {}).value;
+  name = name.trim(); phone = phone.trim();
+  if (name.split(/\s+/).filter(Boolean).length < 2) { toast(t('invalidName'), 'err'); return; }
+  if (!/^01[0125][0-9]{8}$/.test(phone)) { toast(t('invalidPhone'), 'err'); return; }
+  try {
+    CURRENT_PROFILE = await API.updateMyProfile({
+      full_name: name, phone: phone, branch_id: branch || null,
+      avatar_url: CURRENT_PROFILE.avatar_url
+    });
+    toast('تم حفظ التعديلات ✓', 'ok');
+    pop();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-/* ═══════════════ LEADERBOARD (real data) ═══════════════ */
 async function renderLeaderboard() {
-  const lbEl = document.getElementById('lb-list');
-  if (!lbEl) return;
-  lbEl.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  if (!window.supabaseClient) { lbEl.innerHTML = emptyState('ph-warning','يتطلب اتصالاً بالإنترنت',''); return; }
+  var el = document.getElementById('lb-list');
+  if (!el) return;
+  el.innerHTML = UI.skeleton(5);
   try {
-    const { data, error } = await window.supabaseClient
-      .from('profiles')
-      .select('id, full_name, points, avatar_url, role')
-      .eq('role','student')
-      .order('points', { ascending: false })
-      .limit(20);
-    if (error) throw error;
-    if (!data?.length) { lbEl.innerHTML = emptyState('ph-trophy','لا توجد بيانات بعد','سجل حضور ليظهر اسمك هنا'); return; }
-    const medals = ['🥇','🥈','🥉'];
-    lbEl.innerHTML = data.map((p,i) => {
-      const isMe = p.id === CURRENT_USER?.id;
-      return `<div class="lb-row card p-3 flex items-center gap-3 mb-2 ${isMe?'border-2 border-primary':''}">
-        <div class="font-bold text-sm w-6 text-center">${medals[i]||(i+1)}</div>
-        <div class="avatar w-9 h-9 text-xs">${avatarHTML(p)}</div>
-        <div class="flex-1 text-sm font-bold">${esc(p.full_name)}${isMe?' (أنت)':''}</div>
-        <div class="text-sm font-bold" style="color:var(--primary)">${p.points||0} ن</div>
-      </div>`;
+    var data = await API.leaderboard();
+    if (!data || !data.length) { el.innerHTML = UI.emptyState('ph-trophy', 'لا بيانات بعد', 'سجّل حضوراً ليظهر اسمك'); return; }
+    var medals = ['🥇', '🥈', '🥉'];
+    el.innerHTML = data.map(function (p, i) {
+      var me = CURRENT_USER && p.id === CURRENT_USER.id;
+      return '<div class="lb-row card p-3 flex items-center gap-3 mb-2 ' + (me ? 'border-2 border-primary' : '') + '">' +
+        '<div class="font-bold text-sm w-6 text-center">' + (medals[i] || (i + 1)) + '</div>' +
+        '<div class="avatar w-9 h-9 text-xs">' + UI.avatarHTML(p) + '</div>' +
+        '<div class="flex-1 text-sm font-bold">' + esc(p.full_name) + (me ? ' (أنت)' : '') + '</div>' +
+        '<div class="text-sm font-bold" style="color:var(--primary)">' + (p.points || 0) + ' ن</div></div>';
     }).join('');
-  } catch(e) { lbEl.innerHTML = emptyState('ph-warning','خطأ في التحميل',e.message); }
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
-/* ═══════════════ NOTIFICATIONS ═══════════════ */
 async function renderNotifications() {
-  const list = document.getElementById('notif-list');
+  var list = document.getElementById('notif-list');
   if (!list) return;
-  list.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  if (!window.supabaseClient || !CURRENT_USER) {
-    list.innerHTML = emptyState('ph-bell-slash','لا توجد إشعارات جديدة','ستظهر هنا تحديثات رحلتك التدريبية');
-    return;
-  }
+  list.innerHTML = UI.skeleton(3);
   try {
-    const { data, error } = await window.supabaseClient
-      .from('notifications')
-      .select('*')
-      .eq('user_id', CURRENT_USER.id)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    if (!data?.length) {
-      list.innerHTML = emptyState('ph-bell-slash','لا توجد إشعارات جديدة','ستظهر هنا إشعارات التأجيل والإلغاء والتنبيهات الخاصة بك');
-      return;
-    }
-    list.innerHTML = data.map(n => `
-      <div class="card p-3 mb-2 flex items-start gap-3 ${n.type==='cancelled'||n.type==='postponed'?'border-2 border-amber-300 bg-amber-50':''}">
-        <div class="pick-ic" style="background:${n.type==='cancelled'?'var(--red)':n.type==='postponed'?'var(--amber)':'var(--primary)'}"><i class="ph-fill ${n.type==='cancelled'?'ph-x-circle':n.type==='postponed'?'ph-clock-countdown':'ph-bell'}"></i></div>
-        <div class="flex-1">
-          <div class="text-sm font-bold">${esc(n.title)}</div>
-          <div class="text-xs mt-1 leading-relaxed">${esc(n.message)}</div>
-          <div class="text-[10px] text-muted mt-1.5" dir="ltr">${new Date(n.created_at).toLocaleString('ar-EG')}</div>
-        </div>
-      </div>`).join('');
-  } catch(e) {
-    list.innerHTML = emptyState('ph-bell-slash','لا توجد إشعارات حالياً','');
-  }
+    var data = await API.fetchNotifications();
+    if (!data.length) { list.innerHTML = UI.emptyState('ph-bell-slash', 'لا إشعارات', 'ستظهر هنا التأجيلات والتنبيهات'); return; }
+    list.innerHTML = data.map(function (n) {
+      var hot = n.type === 'cancelled' || n.type === 'postponed';
+      return '<div class="card p-3 mb-2 flex items-start gap-3 ' + (hot ? 'border-2' : '') + '" onclick="ackNotif(\'' + esc(n.id) + '\')">' +
+        '<div class="pick-ic" style="background:' + (n.type === 'cancelled' ? 'var(--red)' : n.type === 'postponed' ? 'var(--amber)' : 'var(--primary)') + '"><i class="ph-fill ' + (n.type === 'cancelled' ? 'ph-x-circle' : n.type === 'postponed' ? 'ph-clock-countdown' : 'ph-bell') + '"></i></div>' +
+        '<div class="flex-1"><div class="text-sm font-bold">' + esc(n.title) + '</div><div class="text-xs mt-1">' + esc(n.message) + '</div>' +
+        '<div class="text-[10px] text-muted mt-1.5">' + new Date(n.created_at).toLocaleString('ar-EG') + (n.read_at ? '' : ' · جديد') + '</div></div></div>';
+    }).join('');
+    refreshUnread();
+  } catch (e) { list.innerHTML = UI.emptyState('ph-bell-slash', 'لا إشعارات', ''); }
 }
 
-/* ═══════════════ SUPPORT ═══════════════ */
+async function ackNotif(id) {
+  try { await API.markNotifRead(id); refreshUnread(); } catch (e) {}
+}
+
 function renderSupport() {
-  const faqEl = document.getElementById('faq-list');
+  var faqEl = document.getElementById('faq-list');
   if (!faqEl) return;
-  faqEl.innerHTML = FAQ.map((f,i) => `
-    <div class="faq-item card p-3 mb-2" id="faq-${i}">
-      <div class="faq-q font-bold text-sm cursor-pointer flex items-center justify-between" onclick="toggleFaq(${i})">
-        <span>${esc(f.q)}</span><i class="ph-bold ph-caret-down text-mut faq-caret"></i>
-      </div>
-      <div class="faq-a text-xs leading-relaxed">${esc(f.a)}</div>
-    </div>`).join('');
+  faqEl.innerHTML = FAQ.map(function (f, i) {
+    return '<div class="faq-item card p-3 mb-2" id="faq-' + i + '"><div class="faq-q font-bold text-sm cursor-pointer flex items-center justify-between" onclick="toggleFaq(' + i + ')"><span>' + esc(f.q) + '</span><i class="ph-bold ph-caret-down faq-caret"></i></div><div class="faq-a text-xs leading-relaxed">' + esc(f.a) + '</div></div>';
+  }).join('');
 }
-function toggleFaq(i) { document.getElementById('faq-'+i)?.classList.toggle('open'); }
+function toggleFaq(i) { var el = document.getElementById('faq-' + i); if (el) el.classList.toggle('open'); }
 
-/* ═══════════════ VOLUNTEER HOME ═══════════════ */
+async function shareApp() {
+  var url = location.origin + location.pathname;
+  var text = 'مسار RTC — كورسات رسالة المجانية';
+  try {
+    if (navigator.share) await navigator.share({ title: 'مسار RTC', text: text, url: url });
+    else { await navigator.clipboard.writeText(url); toast('تم نسخ الرابط', 'ok'); }
+    await API.claimSocial();
+    if (CURRENT_PROFILE) {
+      CURRENT_PROFILE.badge_ids = CURRENT_PROFILE.badge_ids || [];
+      if (CURRENT_PROFILE.badge_ids.indexOf('social') === -1) CURRENT_PROFILE.badge_ids.push('social');
+    }
+  } catch (e) {}
+}
+
+/* ═══════════════ Check-in + excuses ═══════════════ */
+function renderCheckin() {
+  var box = document.getElementById('checkin-box');
+  if (!box) return;
+  box.innerHTML =
+    '<div class="card p-4 flex flex-col gap-3"><p class="text-xs text-muted">أدخل رمز المحاضرة الذي يعرضه المتطوع، أو امسح QR إن وُجد.</p>' +
+    '<input class="inp font-mono text-center text-xl tracking-widest" id="ci-code" maxlength="8" dir="ltr" placeholder="ABC123" style="text-transform:uppercase">' +
+    '<button class="btn btn-primary btn-big" onclick="doCheckin()"><i class="ph-bold ph-qr-code"></i> تأكيد حضوري</button></div>';
+}
+
+async function doCheckin() {
+  var code = ((document.getElementById('ci-code') || {}).value || '').trim();
+  if (code.length < 4) { toast('أدخل الرمز كاملاً', 'err'); return; }
+  try {
+    await API.checkIn(code);
+    UI.fireConfetti(40);
+    toast('تم تسجيل حضورك ✓', 'ok');
+    if (CURRENT_PROFILE) CURRENT_PROFILE = await API.fetchMyProfile();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+async function renderExcuseForm() {
+  var box = document.getElementById('excuse-box');
+  if (!box) return;
+  box.innerHTML = UI.skeleton(2);
+  try {
+    var enroll = await API.fetchMyEnrollments();
+    var mine = await API.fetchExcuses(false);
+    var opts = enroll.map(function (e) {
+      var b = e.batches || {};
+      return '<option value="' + esc(e.batch_id) + '">' + esc(b.name || 'مجموعة') + '</option>';
+    }).join('');
+    box.innerHTML =
+      '<div class="card p-4 flex flex-col gap-3">' +
+      '<label class="lbl">المجموعة</label><select class="inp" id="ex-batch">' + opts + '</select>' +
+      '<label class="lbl">سبب العذر</label><textarea class="inp" id="ex-reason" rows="3" placeholder="مثال: ظرف صحي طارئ مع تقرير"></textarea>' +
+      '<label class="lbl">مرفق اختياري</label><input type="file" id="ex-file" class="inp" style="padding-top:12px">' +
+      '<button class="btn btn-primary btn-mid" onclick="submitExcuse()"><i class="ph-bold ph-paper-plane-tilt"></i> إرسال الطلب</button></div>' +
+      '<div class="sec-t mt-4">طلباتك السابقة</div>' +
+      (mine.length ? mine.map(function (x) {
+        return '<div class="card p-3 mb-2"><div class="flex justify-between"><div class="text-sm font-bold">' + esc(x.reason).slice(0, 80) + '</div>' +
+          '<span class="status-chip ' + (x.status === 'approved' ? 'st-a' : x.status === 'rejected' ? 'st-r' : 'st-p') + '">' + esc(x.status) + '</span></div>' +
+          '<div class="text-[10px] text-muted mt-1">' + new Date(x.created_at).toLocaleDateString('ar-EG') + '</div></div>';
+      }).join('') : '<div class="text-xs text-muted">لا طلبات بعد</div>');
+  } catch (e) { box.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+async function submitExcuse() {
+  var batch = (document.getElementById('ex-batch') || {}).value;
+  var reason = ((document.getElementById('ex-reason') || {}).value || '').trim();
+  var fileEl = document.getElementById('ex-file');
+  if (!batch) { toast('اختر المجموعة', 'err'); return; }
+  if (reason.length < 8) { toast('اكتب سبباً أوضح', 'err'); return; }
+  try {
+    var path = null;
+    if (fileEl && fileEl.files && fileEl.files[0]) path = await API.uploadExcuseFile(fileEl.files[0]);
+    await API.submitExcuse({ p_batch_id: batch, p_session_id: null, p_reason: reason, p_file: path });
+    toast('تم إرسال طلب العذر', 'ok');
+    renderExcuseForm();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+/* ═══════════════ Volunteer ═══════════════ */
 async function renderVolunteerHome() {
   if (!CURRENT_PROFILE) return;
-  setEl('vh-name', CURRENT_PROFILE.full_name.split(' ')[0]);
-  setEl('vh-branch', CURRENT_PROFILE.branch || '');
-  const av = document.getElementById('vh-av'); if (av) av.innerHTML = avatarHTML(CURRENT_PROFILE);
-  const myBatches = await fetchMyBatches();
-  const vhBatches = document.getElementById('vh-batches');
-  if (vhBatches) {
-    if (!myBatches.length) {
-      vhBatches.innerHTML = emptyState('ph-users-three','لا توجد مجموعات بعد','أضف مجموعتك الأولى لتبدأ الإشراف على الطلاب','إضافة مجموعة','openAddBatchModal()');
-    } else {
-      vhBatches.innerHTML = myBatches.map(b => batchSummaryCard(b)).join('');
-    }
-  }
+  setEl('vh-name', (CURRENT_PROFILE.full_name || '').split(' ')[0]);
+  var br = branchOf(CURRENT_PROFILE);
+  setEl('vh-branch', (br && br.name_ar) || '');
+  var av = document.getElementById('vh-av'); if (av) av.innerHTML = UI.avatarHTML(CURRENT_PROFILE);
+  var el = document.getElementById('vh-batches');
+  if (!el) return;
+  el.innerHTML = UI.skeleton(2);
+  try {
+    var mine = await API.fetchMyBatches();
+    el.innerHTML = mine.length ? mine.map(batchSummaryCard).join('') :
+      UI.emptyState('ph-users-three', 'لا مجموعات بعد', 'أضف مجموعة أو تولَّ إشراف واحدة', 'إضافة مجموعة', 'openAddBatchModal()');
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
 function batchSummaryCard(b) {
-  const c = b.courses || {};
-  return `<div class="c-card" onclick="openBatchDetail('${esc(b.id)}')">
-    <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-    <div class="flex-1">
-      <div class="text-sm font-bold">${esc(b.name)}</div>
-      <div class="text-[11px]" style="color:var(--mut)">${esc(c.title||'')} · ${esc(b.branch)}</div>
-      <div class="text-[11px]" style="color:var(--mut)">${esc(b.schedule||'')}</div>
-    </div>
-    <i class="ph-bold ph-caret-left" style="color:var(--mut)"></i>
-  </div>`;
+  var c = b.courses || {};
+  return '<div class="c-card" onclick="openBatchDetail(\'' + esc(b.id) + '\')">' +
+    '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+    '<div class="flex-1"><div class="text-sm font-bold">' + esc(b.name) + '</div>' +
+    '<div class="text-[11px] text-muted">' + esc(c.title || '') + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
+    '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + '</div></div><i class="ph-bold ph-caret-left text-muted"></i></div>';
 }
 
-/* ═══════════════ VOLUNTEER BATCHES (تسجيل الحضور) ═══════════════ */
-let _currentBatch = null;
-let _batchStudents = [];
-let _attendanceState = {};
-
 async function renderVolunteerBatches() {
-  const list = document.getElementById('vb-list');
+  var list = document.getElementById('vb-list');
   if (!list) return;
-  list.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  const myBatches = await fetchMyBatches();
-  if (!myBatches.length) {
-    list.innerHTML = emptyState('ph-users-three','لا توجد مجموعات','أضف مجموعتك الأولى لتبدأ','إضافة مجموعة','openAddBatchModal()');
-    return;
-  }
-  list.innerHTML = myBatches.map(b => batchSummaryCard(b)).join('');
+  list.innerHTML = UI.skeleton(3);
+  try {
+    var mine = await API.fetchMyBatches();
+    list.innerHTML = mine.length ? mine.map(batchSummaryCard).join('') :
+      UI.emptyState('ph-users-three', 'لا مجموعات', 'أضف مجموعتك الأولى', 'إضافة', 'openAddBatchModal()');
+  } catch (e) { list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
 async function openBatchDetail(batchId) {
-  // Show batch detail screen with real students
-  const batches = _batchesCache || await fetchBatches();
-  const myBatches = await fetchMyBatches();
-  _currentBatch = myBatches.find(b => b.id === batchId) || batches.find(b => b.id === batchId);
-  if (!_currentBatch) { toast('لم يتم العثور على المجموعة','err'); return; }
-
-  _batchStudents = await fetchBatchStudents(batchId);
-  _attendanceState = {};
-
-  // Create dynamic screen
-  let old = document.getElementById('screen-v-batch-detail'); if (old) old.remove();
-  const screen = document.createElement('div');
-  screen.id = 'screen-v-batch-detail';
-  screen.className = 'screen';
-
-  const c = _currentBatch.courses || {};
-  const instName = _currentBatch.instructor_name || 'سيتم تحديده من المشرف';
-  screen.innerHTML = `
-    <div class="glass-header"><div class="hdr">
-      <button class="icon-btn" onclick="pop()"><i class="ph ph-arrow-right"></i></button>
-      <h1 class="text-sm font-bold">${esc(_currentBatch.name)}</h1>
-      <span class="status-chip st-a">${_batchStudents.length} طالب</span>
-    </div></div>
-    <div class="scr-body" id="vbd-body">
-      <div class="grad-hero p-4 rounded-3xl text-white shadow-xl mb-4">
-        <div class="flex justify-between items-start">
-          <div>
-            <div class="text-xs text-white/70">المجموعة التدريبية — فرع مدينة نصر</div>
-            <div class="text-lg font-bold mt-1">${esc(c.title||_currentBatch.name)}</div>
-            <div class="text-xs text-white/80 mt-0.5"><i class="ph-bold ph-calendar"></i> ${esc(_currentBatch.schedule||'')}</div>
-            <div class="text-xs text-white/90 mt-1 font-bold"><i class="ph-bold ph-chalkboard-teacher"></i> المحاضر: ${esc(instName)}</div>
-          </div>
-          <button class="chip text-xs bg-white/20 text-white border-white/30" onclick="openAssignInstructorModal('${esc(_currentBatch.id)}')"><i class="ph-bold ph-pencil"></i> تعديل</button>
-        </div>
-      </div>
-
-      <div class="flex gap-2 mb-4">
-        <button class="btn btn-soft btn-sm flex-1" onclick="exportBatchRosterCSV()"><i class="ph-bold ph-file-csv"></i> تصدير الكشف (CSV)</button>
-        <button class="btn btn-amber btn-sm flex-1" onclick="openNotifyBatchModal('${esc(_currentBatch.id)}')"><i class="ph-bold ph-bell-ringing"></i> إشعار تأجيل / إلغاء</button>
-      </div>
-
-      <div class="sec-t flex items-center justify-between mb-3">
-        <span>تسجيل حضور اليوم</span>
-        <span class="text-xs" style="color:var(--mut)" id="att-date">${new Date().toLocaleDateString('ar-EG',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span>
-      </div>
-      <div id="vbd-roster" class="flex flex-col gap-2 mb-4">
-        ${_batchStudents.length ? _batchStudents.map(e => {
-          const prof = e.profiles || {};
-          return `<div class="card p-3 flex items-center gap-3">
-            <div class="avatar w-10 h-10 text-sm">${avatarHTML(prof)}</div>
-            <div class="flex-1">
-              <div class="text-sm font-bold">${esc(prof.full_name||'—')}</div>
-              <div class="text-[11px]" style="color:var(--mut)">${esc(prof.phone||'')}</div>
-            </div>
-            <div class="flex gap-1.5">
-              <button class="roster-chk" id="att-p-${esc(prof.id)}" onclick="setAttendance('${esc(prof.id)}','present')" title="حاضر"><i class="ph-bold ph-check"></i></button>
-              <button class="roster-chk" id="att-l-${esc(prof.id)}" onclick="setAttendance('${esc(prof.id)}','late')" title="متأخر" style="font-size:13px;background:var(--card-2)">⏰</button>
-              <button class="roster-chk" id="att-a-${esc(prof.id)}" onclick="setAttendance('${esc(prof.id)}','absent')" title="غائب" style="font-size:13px;background:var(--card-2)"><i class="ph-bold ph-x" style="color:var(--red)"></i></button>
-            </div>
-          </div>`;
-        }).join('') : emptyState('ph-users','لا يوجد طلاب مسجلون في هذه المجموعة بعد','قم بدعوة الطلاب للانضمام لهذه المجموعة')}
-      </div>
-      ${_batchStudents.length ? `<div class="flex gap-2">
-        <button class="btn btn-teal btn-big flex-1" onclick="saveAttendance()"><i class="ph-bold ph-floppy-disk"></i> حفظ وتسجيل الحضور</button>
-        <button class="btn btn-primary btn-mid" onclick="issueCerts()"><i class="ph-bold ph-certificate"></i> إصدار شهادات</button>
-      </div>` : ''}
-    </div>`;
-  document.getElementById('app').appendChild(screen);
-  push('v-batch-detail');
+  try {
+    var mine = await API.fetchMyBatches();
+    var all = mine.length ? mine : await API.fetchBatches(true);
+    _currentBatch = all.find(function (b) { return b.id === batchId; });
+    if (!_currentBatch) { toast('المجموعة غير موجودة', 'err'); return; }
+    _batchStudents = await API.fetchBatchStudents(batchId);
+    _attendanceState = {};
+    _currentSession = null;
+    var old = document.getElementById('screen-v-batch-detail'); if (old) old.remove();
+    var screen = document.createElement('div');
+    screen.id = 'screen-v-batch-detail';
+    screen.className = 'screen';
+    var c = _currentBatch.courses || {};
+    var isStaff = CURRENT_PROFILE && (CURRENT_PROFILE.role === 'admin' || CURRENT_PROFILE.role === 'volunteer');
+    screen.innerHTML =
+      '<div class="glass-header"><div class="hdr"><button class="icon-btn" onclick="pop()"><i class="ph ph-arrow-right"></i></button>' +
+      '<h1 class="text-sm font-bold">' + esc(_currentBatch.name) + '</h1><span class="status-chip st-a">' + _batchStudents.length + ' طالب</span></div></div>' +
+      '<div class="scr-body" id="vbd-body">' +
+      '<div class="grad-hero p-4 rounded-3xl text-white shadow-xl mb-4"><div class="text-lg font-bold">' + esc(c.title || _currentBatch.name) + '</div>' +
+      '<div class="text-xs text-white/80 mt-1">' + esc(_currentBatch.schedule || '') + '</div></div>' +
+      '<div class="grid grid-cols-2 gap-2 mb-4">' +
+      '<button class="btn btn-primary btn-sm" onclick="startTodaySession()"><i class="ph-bold ph-qr-code"></i> بدء محاضرة اليوم</button>' +
+      '<button class="btn btn-soft btn-sm" onclick="exportBatchRosterCSV()"><i class="ph-bold ph-file-csv"></i> تصدير CSV</button>' +
+      '<button class="btn btn-amber btn-sm" onclick="openNotifyBatchModal(\'' + esc(_currentBatch.id) + '\')"><i class="ph-bold ph-bell"></i> تنبيه المجموعة</button>' +
+      '<button class="btn btn-teal btn-sm" onclick="issueCerts()"><i class="ph-bold ph-certificate"></i> إصدار الشهادات</button></div>' +
+      '<div id="session-qr" class="hidden mb-4"></div>' +
+      '<div class="sec-t">كشف الطلاب — حضور اليوم</div><div id="vbd-roster">' + rosterHTML(isStaff) + '</div>' +
+      (_batchStudents.length ? '<button class="btn btn-teal btn-big w-full mt-3" onclick="saveAttendance()"><i class="ph-bold ph-floppy-disk"></i> حفظ الحضور</button>' +
+        '<button class="btn btn-soft btn-mid w-full mt-2" onclick="openReportModal()">تقرير المحاضرة</button>' : '') +
+      '</div>';
+    document.getElementById('app').appendChild(screen);
+    push('v-batch-detail');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-function openNotifyBatchModal(batchId) {
-  let old = document.getElementById('modal-notify-batch'); if (old) old.remove();
-  const modal = document.createElement('div');
-  modal.id = 'modal-notify-batch'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl font-bold"><i class="ph-bold ph-bell-ringing"></i></div>
-        <div><h3 class="text-base font-bold">إرسال إشعار بتأجيل أو إلغاء المحاضرة</h3><p class="text-xs text-muted">سيصل هذا التنبيه لجميع الطلاب المسجلين بالمجموعة</p></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div>
-          <label class="lbl">نوع التنبيه <b>*</b></label>
-          <select class="inp" id="nb-type">
-            <option value="postponed">تأجيل المحاضرة ⏰</option>
-            <option value="cancelled">إلغاء المحاضرة 🚫</option>
-            <option value="announcement">إعلان هام 📢</option>
-          </select>
-        </div>
-        <div>
-          <label class="lbl">عنوان الرسالة <b>*</b></label>
-          <input class="inp" id="nb-title" type="text" value="تنبيه هـام بشأن المحاضرة">
-        </div>
-        <div>
-          <label class="lbl">تفاصيل التنبيه والموعد البديل <b>*</b></label>
-          <textarea class="inp" id="nb-msg" rows="3" placeholder="مثال: تم تأجيل محاضرة الثلاثاء القادم إلى يوم الخميس في تمام ٥ مساءً بفرع مدينة نصر"></textarea>
-        </div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="nb-close">إلغاء</button>
-        <button class="btn btn-primary btn-mid flex-1" onclick="sendBatchNotice('${esc(batchId)}')"><i class="ph-bold ph-paper-plane-right"></i> إرسال التنبيه للجميع</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#nb-close').onclick = () => modal.remove();
-}
-
-async function sendBatchNotice(batchId) {
-  const type  = document.getElementById('nb-type')?.value;
-  const title = document.getElementById('nb-title')?.value.trim();
-  const msg   = document.getElementById('nb-msg')?.value.trim();
-  if (!msg) { toast('يرجى كتابة نص التنبيه أولاً','err'); return; }
-
-  // Web Push Notification to device
-  if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body: msg, dir: 'rtl' });
-  } else if ('Notification' in window && Notification.permission !== 'denied') {
-    Notification.requestPermission().then(p => {
-      if (p === 'granted') new Notification(title, { body: msg, dir: 'rtl' });
-    });
-  }
-
-  // Insert notification rows for enrolled students in Supabase if online
-  if (window.supabaseClient && _batchStudents.length) {
-    try {
-      const rows = _batchStudents.map(e => ({
-        user_id: (e.profiles||{}).id || e.student_id,
-        title, message: msg, type
-      }));
-      await window.supabaseClient.from('notifications').insert(rows);
-    } catch(e) { console.warn('Notification store error:', e); }
-  }
-
-  document.getElementById('modal-notify-batch')?.remove();
-  toast('تم إرسال التنبيه لجميع طلاب المجموعة بنجاح 🔔', 'ok', 'ph-bell-ringing');
-}
-
-function openAssignInstructorModal(batchId) {
-  let old = document.getElementById('modal-assign-inst'); if (old) old.remove();
-  const modal = document.createElement('div');
-  modal.id = 'modal-assign-inst'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal flex items-center justify-center text-xl font-bold"><i class="ph-bold ph-chalkboard-teacher"></i></div>
-        <div><h3 class="text-base font-bold">تعيين أو تعديل اسم المحاضر / المتطوع</h3><p class="text-xs text-muted">اكتب اسم المتطوع المسؤول عن إشراف وتدريس المجموعة</p></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div>
-          <label class="lbl">اسم المحاضر / المتطوع <b>*</b></label>
-          <input class="inp" id="ai-name" type="text" placeholder="مثال: أ. أحمد مصطفى" value="${esc(_currentBatch?.instructor_name==='سيتم تحديده من المشرف'?'':_currentBatch?.instructor_name||'')}">
-        </div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="ai-close">إلغاء</button>
-        <button class="btn btn-teal btn-mid flex-1" onclick="saveInstructorName('${esc(batchId)}')"><i class="ph-bold ph-floppy-disk"></i> حفظ اسم المحاضر</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#ai-close').onclick = () => modal.remove();
-}
-
-async function saveInstructorName(batchId) {
-  const name = document.getElementById('ai-name')?.value.trim() || 'سيتم تحديده من المشرف';
-  if (window.supabaseClient) {
-    try {
-      const { error } = await window.supabaseClient.from('batches').update({ instructor_name: name }).eq('id', batchId);
-      if (error) throw error;
-    } catch(e) { toast('خطأ: ' + e.message,'err'); return; }
-  }
-  if (_currentBatch) _currentBatch.instructor_name = name;
-  _batchesCache = null;
-  document.getElementById('modal-assign-inst')?.remove();
-  toast('تم تعديل اسم المحاضر بنجاح ✓','ok');
-  openBatchDetail(batchId);
+function rosterHTML(isStaff) {
+  if (!_batchStudents.length) return UI.emptyState('ph-users', 'لا طلاب بعد', 'ادعُ الطلاب للانضمام');
+  return _batchStudents.map(function (e) {
+    var prof = e.profiles || {};
+    var phone = (CURRENT_PROFILE && CURRENT_PROFILE.role === 'admin') ? (prof.phone || '—') : SEC.maskPhone(prof.phone);
+    return '<div class="card p-3 flex items-center gap-3 mb-2"><div class="avatar w-10 h-10 text-sm cursor-pointer" onclick="openStudentFile(\'' + esc(prof.id) + '\')">' + UI.avatarHTML(prof) + '</div>' +
+      '<div class="flex-1"><div class="text-sm font-bold">' + esc(prof.full_name || '—') + '</div>' +
+      '<div class="text-[11px] text-muted" dir="ltr">' + esc(phone) + ' · ' + (e.sessions_done || 0) + ' محاضرة</div></div>' +
+      '<div class="flex gap-1.5">' +
+      '<button class="roster-chk" id="att-p-' + esc(prof.id) + '" onclick="setAttendance(\'' + esc(prof.id) + '\',\'present\')"><i class="ph-bold ph-check"></i></button>' +
+      '<button class="roster-chk" id="att-l-' + esc(prof.id) + '" onclick="setAttendance(\'' + esc(prof.id) + '\',\'late\')">⏰</button>' +
+      '<button class="roster-chk" id="att-a-' + esc(prof.id) + '" onclick="setAttendance(\'' + esc(prof.id) + '\',\'absent\')"><i class="ph-bold ph-x" style="color:var(--red)"></i></button>' +
+      '<button class="roster-chk" id="att-e-' + esc(prof.id) + '" onclick="setAttendance(\'' + esc(prof.id) + '\',\'excused\')"><i class="ph-bold ph-first-aid"></i></button>' +
+      '</div></div>';
+  }).join('');
 }
 
 function setAttendance(studentId, status) {
   _attendanceState[studentId] = status;
-  // Update UI
-  ['present','late','absent'].forEach(s => {
-    const el = document.getElementById(`att-${s[0]}-${studentId}`);
+  ['present', 'late', 'absent', 'excused'].forEach(function (s) {
+    var el = document.getElementById('att-' + s[0] + '-' + studentId);
     if (el) el.classList.toggle('on', s === status);
   });
+  SEC.haptic(8);
+}
+
+async function startTodaySession() {
+  if (!_currentBatch) return;
+  try {
+    _currentSession = await API.startSession(_currentBatch.id);
+    toast(_currentSession.reuse ? 'محاضرة اليوم مفتوحة' : 'تم بدء المحاضرة', 'ok');
+    var box = document.getElementById('session-qr');
+    if (!box) return;
+    box.classList.remove('hidden');
+    var code = _currentSession.checkin_code || '';
+    var payload = location.origin + location.pathname + '#s-checkin';
+    box.innerHTML = '<div class="card p-4 text-center"><div class="text-xs text-muted mb-2">امسح أو أدخل الرمز</div>' +
+      '<canvas id="qr-canvas" class="mx-auto"></canvas>' +
+      '<div class="text-3xl font-black tracking-[0.3em] mt-3" dir="ltr">' + esc(code) + '</div>' +
+      '<div class="text-[10px] text-muted mt-1">محاضرة رقم ' + (_currentSession.session_number || '') + '</div></div>';
+    if (window.QRCode && QRCode.toCanvas) {
+      QRCode.toCanvas(document.getElementById('qr-canvas'), 'RTC-CHECKIN:' + code + '|' + payload, { width: 196, margin: 1 });
+    }
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
 async function saveAttendance() {
-  if (!window.supabaseClient || !CURRENT_USER) { toast('يتطلب اتصالاً بالإنترنت','err'); return; }
-  if (!Object.keys(_attendanceState).length) { toast('يجب تحديد حالة حضور الطلاب أولاً','err'); return; }
-
-  // Create session first
-  try {
-    const { data: session, error: sessErr } = await window.supabaseClient.from('sessions').insert({
-      batch_id: _currentBatch.id,
-      title: 'محاضرة ' + ((_currentBatch.sessions_done||0)+1),
-      session_number: (_currentBatch.sessions_done||0)+1,
-      session_date: new Date().toISOString().split('T')[0],
-      created_by: CURRENT_USER.id
-    }).select().single();
-    if (sessErr) throw sessErr;
-
-    // Record attendance for each student
-    const rows = Object.entries(_attendanceState).map(([sid, status]) => ({
-      session_id: session.id, batch_id: _currentBatch.id, student_id: sid, status, recorded_by: CURRENT_USER.id
-    }));
-    const { error: attErr } = await window.supabaseClient.from('attendance').upsert(rows, { onConflict: 'session_id,student_id', ignoreDuplicates: false });
-    if (attErr) throw attErr;
-
-    // Award points to present students
-    for (const [sid, status] of Object.entries(_attendanceState)) {
-      const pts = status==='present'?10:status==='late'?5:0;
-      if (pts > 0) {
-        await window.supabaseClient.rpc('record_attendance', {
-          p_session_id: session.id, p_batch_id: _currentBatch.id, p_student_id: sid, p_status: status
-        });
-      }
-    }
-
-    // Update batch sessions_done
-    await window.supabaseClient.from('batches').update({ sessions_done: (_currentBatch.sessions_done||0)+1 }).eq('id', _currentBatch.id);
-
-    fireConfetti(40);
-    toast('تم تسجيل الحضور بنجاح لـ ' + Object.keys(_attendanceState).length + ' طالب ✓','ok');
-    _batchesCache = null;
-    _attendanceState = {};
-    pop();
-  } catch(e) { toast('خطأ في تسجيل الحضور: ' + e.message, 'err'); console.error(e); }
+  if (!_currentBatch) return;
+  var keys = Object.keys(_attendanceState);
+  var missing = _batchStudents.length - keys.length;
+  var go = async function () {
+    try {
+      if (!_currentSession) _currentSession = await API.startSession(_currentBatch.id);
+      var records = keys.map(function (sid) { return { student_id: sid, status: _attendanceState[sid] }; });
+      await API.saveAttendance(_currentSession.id, records);
+      UI.fireConfetti(36);
+      toast(t('attendanceSaved') + ' · ' + keys.length + ' طالب', 'ok');
+      API.invalidate();
+      pop();
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  };
+  if (!keys.length) { toast('حدّد حالة طالب واحد على الأقل', 'err'); return; }
+  if (missing > 0) {
+    UI.showConfirm('طلاب بلا حالة', missing + ' طالب بلا تحديد. حفظ الحالات المحددة فقط؟', go, { danger: false, yesLabel: 'حفظ' });
+  } else go();
 }
 
 async function issueCerts() {
-  if (!window.supabaseClient || !CURRENT_USER) return;
-  const batch = _currentBatch;
-  const course = batch.courses || {};
-  if (!course.id) { toast('لا يوجد كورس مرتبط بهذه المجموعة','err'); return; }
-  const total = course.sessions_count || 1;
-
-  // Find students who completed all sessions
-  const eligible = _batchStudents.filter(e => (e.sessions_done||0) >= total);
-  if (!eligible.length) { toast('لا يوجد طلاب أكملوا جميع المحاضرات بعد','info'); return; }
-
-  try {
-    const rows = eligible.map(e => ({
-      student_id: (e.profiles||{}).id || e.student_id,
-      course_id: course.id,
-      batch_id: batch.id,
-      serial_number: 'RTC-' + Math.random().toString(36).substr(2,8).toUpperCase(),
-      issued_by: CURRENT_USER.id
-    }));
-    const { error } = await window.supabaseClient.from('certs').upsert(rows, { onConflict: 'student_id,course_id', ignoreDuplicates: true });
-    if (error) throw error;
-    fireConfetti(80);
-    toast(`تم إصدار ${eligible.length} شهادة بنجاح 🎓`, 'ok');
-  } catch(e) { toast('خطأ في إصدار الشهادات: ' + e.message,'err'); }
+  if (!_currentBatch) return;
+  UI.showConfirm('إصدار الشهادات؟', 'ستصدر فقط للطلاب الذين أكملوا عدد محاضرات الدورة.', async function () {
+    try {
+      var r = await API.issueCerts(_currentBatch.id);
+      var n = (r && r.issued) || 0;
+      if (n) { UI.fireConfetti(70); toast('تم إصدار ' + n + ' شهادة 🎓', 'ok'); }
+      else toast('لا طلاب مستحقين بعد', 'info');
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { danger: false, yesLabel: 'إصدار' });
 }
 
-/* ─── Add Batch Modal (Volunteer & Admin) ─── */
-async function openAddBatchModal() {
-  let old = document.getElementById('modal-add-batch'); if (old) old.remove();
-  const courses = await fetchCourses();
-  const coursesOpts = courses.map(c => `<option value="${esc(c.id)}">${esc(c.title)}</option>`).join('');
+function openNotifyBatchModal(batchId) {
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="text-base font-bold">تنبيه طلاب المجموعة</h3>' +
+    '<select class="inp" id="nb-type"><option value="postponed">تأجيل</option><option value="cancelled">إلغاء</option><option value="announcement">إعلان</option></select>' +
+    '<input class="inp" id="nb-title" value="تنبيه هام بشأن المحاضرة">' +
+    '<textarea class="inp" id="nb-msg" rows="3" placeholder="التفاصيل والموعد البديل"></textarea>' +
+    '<div class="flex gap-2"><button class="btn btn-soft btn-mid flex-1" data-close>إلغاء</button>' +
+    '<button class="btn btn-primary btn-mid flex-1" onclick="sendBatchNotice(\'' + esc(batchId) + '\')">إرسال</button></div></div>',
+    'modal-notify-batch'
+  );
+}
 
-  const modal = document.createElement('div');
-  modal.id = 'modal-add-batch'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal flex items-center justify-center text-xl font-bold"><i class="ph-bold ph-users-three"></i></div>
-        <div><h3 class="text-base font-bold">إضافة مجموعة تدريبية جديدة</h3><p class="text-xs text-muted">أنشئ مجموعة وربطها بالكورس والفرع</p></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div>
-          <label class="lbl">الكورس التدريبي <b>*</b></label>
-          <select class="inp" id="nb-course">${coursesOpts||'<option value="">لا توجد كورسات — اطلب من المشرف إضافة كورسات</option>'}</select>
-        </div>
-        <div><label class="lbl">اسم المجموعة <b>*</b></label><input class="inp" id="nb-title" type="text" placeholder="مثال: مجموعة (أ) — السبت"></div>
-        <div>
-          <label class="lbl">الفرع <b>*</b></label>
-          <select class="inp" id="nb-branch">
-            <option value="فرع مصدق (الدقي)">فرع مصدق (الدقي) — الجيزة</option>
-            <option value="فرع مدينة نصر">فرع مدينة نصر — القاهرة</option>
-            <option value="فرع المعادي">فرع المعادي — القاهرة</option>
-            <option value="فرع 6 أكتوبر">فرع 6 أكتوبر — الجيزة</option>
-            <option value="فرع فيصل (الطوابق)">فرع فيصل (الطوابق) — الجيزة</option>
-            <option value="فرع سموحة (الإسكندرية)">فرع سموحة — الإسكندرية</option>
-          </select>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="lbl">الأيام</label><input class="inp" id="nb-schedule" type="text" placeholder="مثال: السبت والإثنين"></div>
-          <div><label class="lbl">الوقت</label><input class="inp" id="nb-time" type="text" placeholder="مثال: ٥:٠٠ م"></div>
-        </div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="nb-close">إلغاء</button>
-        <button class="btn btn-teal btn-mid flex-1" onclick="saveNewBatch()"><i class="ph-bold ph-plus"></i> إنشاء المجموعة</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#nb-close').onclick = () => modal.remove();
+async function sendBatchNotice(batchId) {
+  var type = (document.getElementById('nb-type') || {}).value;
+  var title = ((document.getElementById('nb-title') || {}).value || '').trim();
+  var msg = ((document.getElementById('nb-msg') || {}).value || '').trim();
+  if (!msg) { toast('اكتب نص التنبيه', 'err'); return; }
+  try {
+    var n = await API.broadcast('batch', batchId, type, title, msg);
+    document.getElementById('modal-notify-batch') && document.getElementById('modal-notify-batch').remove();
+    toast('تم إرسال التنبيه لـ ' + n + ' طالب', 'ok');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+function openReportModal() {
+  if (!_currentSession) { toast('ابدأ محاضرة اليوم أولاً', 'info'); return; }
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">تقرير المحاضرة</h3>' +
+    '<textarea class="inp" id="rp-sum" rows="3" placeholder="ملخص ما تم شرحه"></textarea>' +
+    '<label class="lbl">مستوى الفهم (1-5)</label><input class="inp" id="rp-und" type="number" min="1" max="5" value="4">' +
+    '<label class="lbl">التفاعل (1-5)</label><input class="inp" id="rp-eng" type="number" min="1" max="5" value="4">' +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button>' +
+    '<button class="btn btn-primary flex-1" onclick="saveReport()">حفظ التقرير</button></div></div>'
+  );
+}
+
+async function saveReport() {
+  try {
+    await API.submitReport(_currentSession.id, (document.getElementById('rp-sum') || {}).value, parseInt((document.getElementById('rp-und') || {}).value, 10), parseInt((document.getElementById('rp-eng') || {}).value, 10));
+    document.querySelector('.modal-bg') && document.querySelector('.modal-bg').remove();
+    toast('تم حفظ التقرير', 'ok');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+function openStudentFile(id) {
+  var e = _batchStudents.find(function (x) { return (x.profiles || {}).id === id || x.student_id === id; });
+  if (!e) return;
+  var p = e.profiles || {};
+  var phone = CURRENT_PROFILE.role === 'admin' ? (p.phone || '—') : SEC.maskPhone(p.phone);
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div>' +
+    '<div class="flex items-center gap-3"><div class="avatar w-14 h-14">' + UI.avatarHTML(p) + '</div><div><div class="font-bold">' + esc(p.full_name) + '</div>' +
+    '<div class="text-xs text-muted" dir="ltr">' + esc(phone) + '</div><div class="text-xs">' + (p.points || 0) + ' نقطة · سلسلة ' + (p.streak || 0) + '</div></div></div>' +
+    '<textarea class="inp" id="pn-body" rows="3" placeholder="ملاحظة خاصة (لا يراها الطالب)"></textarea>' +
+    '<button class="btn btn-primary btn-mid" onclick="saveNote(\'' + esc(p.id) + '\')">حفظ الملاحظة</button></div>'
+  );
+}
+
+async function saveNote(sid) {
+  try {
+    await API.addNote(sid, (document.getElementById('pn-body') || {}).value);
+    toast('حُفظت الملاحظة', 'ok');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+function exportToCSV(filename, headers, rows) {
+  var csv = '\uFEFF' + headers.join(',') + '\n';
+  rows.forEach(function (row) {
+    csv += row.map(function (val) { return '"' + String(val || '').replace(/"/g, '""') + '"'; }).join(',') + '\n';
+  });
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+  toast('تم تصدير CSV', 'ok');
+}
+
+function exportBatchRosterCSV() {
+  if (!_currentBatch || !_batchStudents.length) { toast('لا بيانات', 'err'); return; }
+  var admin = CURRENT_PROFILE && CURRENT_PROFILE.role === 'admin';
+  exportToCSV('حضور_' + _currentBatch.name + '.csv', ['الاسم', 'الهاتف', 'المحاضرات'], _batchStudents.map(function (e) {
+    var p = e.profiles || {};
+    return [p.full_name || '—', admin ? (p.phone || '—') : SEC.maskPhone(p.phone), e.sessions_done || 0];
+  }));
+}
+
+async function openAddBatchModal() {
+  var courses = [];
+  try { courses = await API.fetchCourses(); } catch (e) {}
+  var cOpts = courses.map(function (c) { return '<option value="' + esc(c.id) + '">' + esc(c.title) + '</option>'; }).join('');
+  var bOpts = _branches.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name_ar) + '</option>'; }).join('');
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">مجموعة جديدة</h3>' +
+    '<select class="inp" id="nb-course">' + cOpts + '</select>' +
+    '<input class="inp" id="nb-title" placeholder="اسم المجموعة">' +
+    '<select class="inp" id="nb-branch">' + bOpts + '</select>' +
+    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="nb-schedule" placeholder="الأيام"><input class="inp" id="nb-time" placeholder="الوقت"></div>' +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-teal flex-1" onclick="saveNewBatch()">إنشاء</button></div></div>',
+    'modal-add-batch'
+  );
 }
 
 async function saveNewBatch() {
-  if (!window.supabaseClient || !CURRENT_USER) { toast('يتطلب تسجيل الدخول','err'); return; }
-  const courseId   = document.getElementById('nb-course')?.value;
-  const title      = document.getElementById('nb-title')?.value.trim();
-  const branch     = document.getElementById('nb-branch')?.value;
-  const schedDay   = document.getElementById('nb-schedule')?.value.trim();
-  const schedTime  = document.getElementById('nb-time')?.value.trim();
-  if (!title || title.length < 3) { toast('يرجى كتابة اسم المجموعة','err'); return; }
-  if (!courseId) { toast('يرجى اختيار الكورس','err'); return; }
+  var courseId = (document.getElementById('nb-course') || {}).value;
+  var title = ((document.getElementById('nb-title') || {}).value || '').trim();
+  var branch = (document.getElementById('nb-branch') || {}).value;
+  var sched = [((document.getElementById('nb-schedule') || {}).value || '').trim(), ((document.getElementById('nb-time') || {}).value || '').trim()].filter(Boolean).join(' — ');
+  if (!title || title.length < 3) { toast('اكتب اسم المجموعة', 'err'); return; }
+  if (!courseId) { toast('اختر الكورس', 'err'); return; }
   try {
-    const { data, error } = await window.supabaseClient.from('batches').insert({
-      course_id: courseId,
-      name: title,
-      instructor_id: CURRENT_USER.id,
-      instructor_name: CURRENT_PROFILE?.full_name || '',
-      branch,
-      schedule: [schedDay, schedTime].filter(Boolean).join(' — '),
-    }).select().single();
-    if (error) throw error;
-    _batchesCache = null;
-    document.getElementById('modal-add-batch')?.remove();
-    fireConfetti(35);
-    toast('تم إنشاء المجموعة بنجاح 🎉','ok','ph-check-circle');
+    await API.createBatch({ course_id: courseId, name: title, instructor_id: CURRENT_USER.id, branch_id: branch || null, schedule: sched });
+    document.getElementById('modal-add-batch') && document.getElementById('modal-add-batch').remove();
+    UI.fireConfetti(28);
+    toast('تم إنشاء المجموعة', 'ok');
     renderScreen(currentScreenId);
-  } catch(e) { toast('خطأ: ' + e.message,'err'); }
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-/* ═══════════════ VOLUNTEER PROFILE ═══════════════ */
 function renderVolunteerProfile() {
   if (!CURRENT_PROFILE) return;
-  const p = CURRENT_PROFILE;
-  const av = document.getElementById('vp-av'); if (av) av.innerHTML = avatarHTML(p);
+  var p = CURRENT_PROFILE;
+  var av = document.getElementById('vp-av'); if (av) av.innerHTML = UI.avatarHTML(p);
   setEl('vp-name', p.full_name);
-  setEl('vp-branch', 'متطوع بمركز رسالة — ' + (p.branch||''));
-  setEl('vp-phone', p.phone||'—');
+  var br = branchOf(p);
+  setEl('vp-branch', 'متطوع — ' + ((br && br.name_ar) || ''));
+  setEl('vp-phone', p.phone || '—');
 }
 
-/* ═══════════════ ADMIN HOME ═══════════════ */
+function triggerVolunteerBranchPickerUI() {
+  var items = [{ value: '', label: 'كل الفروع', icon: 'ph-globe' }].concat(_branches.map(function (b) {
+    return { value: b.id, label: b.name_ar, icon: 'ph-map-pin' };
+  }));
+  UI.openPicker({
+    title: 'تصفية الإشراف', items: items,
+    currentVal: (document.getElementById('vc-branch-select') || {}).value,
+    onSelect: function (val, lbl) {
+      var i = document.getElementById('vc-branch-select'); if (i) i.value = val;
+      var tEl = document.getElementById('vc-branch-val-txt'); if (tEl) tEl.textContent = lbl;
+      renderVolunteerCoursesList();
+    }
+  });
+}
+
+async function renderVolunteerCoursesList() {
+  var listEl = document.getElementById('vc-list');
+  if (!listEl) return;
+  var selected = (document.getElementById('vc-branch-select') || {}).value || null;
+  if (selected === 'الكل' || selected === '') selected = null;
+  listEl.innerHTML = UI.skeleton(3);
+  try {
+    var courses = await API.fetchCourses(true, selected || null);
+    var batches = await API.fetchBatches(true, selected || null);
+    if (!courses.length) { listEl.innerHTML = UI.emptyState('ph-book-open', 'لا كورسات بهذا الفرع', ''); return; }
+    var isAdmin = CURRENT_PROFILE && CURRENT_PROFILE.role === 'admin';
+    listEl.innerHTML = courses.map(function (c) {
+      var cBatches = batches.filter(function (b) { return b.course_id === c.id; });
+      return '<div class="card p-4 mb-3"><div class="flex items-start justify-between gap-3"><div class="flex items-center gap-3">' +
+        '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+        '<div><div class="text-sm font-bold">' + esc(c.title) + '</div><div class="text-xs text-muted">' + esc(c.category || '') + ' · ' + (c.sessions_count || 8) + ' محاضرات</div></div></div>' +
+        (isAdmin ? '<button class="chip text-xs" onclick="openEditCourseModal(\'' + esc(c.id) + '\')">تعديل</button>' : '') + '</div>' +
+        '<div class="border-t border-line pt-2 mt-2">' + (cBatches.length ? cBatches.map(function (b) {
+          var mine = CURRENT_USER && b.instructor_id === CURRENT_USER.id;
+          return '<div class="bg-card-2 p-2.5 rounded-xl flex items-center justify-between mb-1.5"><div><div class="text-xs font-bold">' + esc(b.name) + '</div>' +
+            '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + '</div></div>' +
+            (mine ? '<span class="chip text-[10px]">أنت المشرف ✓</span>' : '<button class="btn btn-sm btn-teal text-[11px] py-1 h-auto" onclick="assignSelfAsInstructor(\'' + esc(b.id) + '\')">تولّي الإشراف</button>') +
+            '</div>';
+        }).join('') : '<div class="text-xs text-muted">لا مجموعات — <a class="text-primary font-bold" onclick="openAddBatchModal()">إضافة</a></div>') + '</div></div>';
+    }).join('');
+  } catch (e) { listEl.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+function assignSelfAsInstructor(batchId) {
+  UI.showConfirm('تولّي الإشراف؟', 'ستُسجَّل كمحاضر هذه المجموعة.', async function () {
+    try {
+      await API.assignInstructor(batchId, CURRENT_USER.id);
+      API.invalidate();
+      toast('تم تسجيل إشرافك 🎉', 'ok');
+      renderVolunteerCoursesList();
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { danger: false, yesLabel: 'تأكيد' });
+}
+
+async function renderStaffExcuses() {
+  var el = document.getElementById('vex-list');
+  if (!el) return;
+  el.innerHTML = UI.skeleton(3);
+  try {
+    var rows = await API.fetchExcuses(true);
+    el.innerHTML = rows.length ? rows.map(function (x) {
+      return '<div class="card p-3 mb-2"><div class="flex justify-between"><div class="text-sm font-bold">' + esc((x.profiles && x.profiles.full_name) || '') + '</div>' +
+        '<span class="status-chip ' + (x.status === 'approved' ? 'st-a' : x.status === 'rejected' ? 'st-r' : 'st-p') + '">' + esc(x.status) + '</span></div>' +
+        '<div class="text-xs mt-1">' + esc(x.reason) + '</div>' +
+        (x.status === 'pending' ? '<div class="flex gap-2 mt-2"><button class="btn btn-teal btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'approved\')">قبول</button>' +
+          '<button class="btn btn-danger btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'rejected\')">رفض</button></div>' : '') + '</div>';
+    }).join('') : UI.emptyState('ph-first-aid', 'لا طلبات عذر', '');
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+async function reviewEx(id, status) {
+  try { await API.reviewExcuse(id, status, ''); toast('تم التحديث', 'ok'); renderStaffExcuses(); }
+  catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+/* ═══════════════ Admin ═══════════════ */
 async function renderAdminHome() {
   if (!CURRENT_PROFILE) return;
   setEl('ah-name', CURRENT_PROFILE.full_name);
-  if (!window.supabaseClient) { return; }
   try {
-    const [{ data: profs }, { data: courses }, { data: batches }, { data: certs }] = await Promise.all([
-      window.supabaseClient.from('profiles').select('id, role'),
-      window.supabaseClient.from('courses').select('id').eq('is_active',true),
-      window.supabaseClient.from('batches').select('id').eq('is_active',true),
-      window.supabaseClient.from('certs').select('id'),
-    ]);
-    const students   = (profs||[]).filter(p => p.role==='student').length;
-    const volunteers = (profs||[]).filter(p => p.role==='volunteer').length;
-    const kpis = [
-      { label:'الطلاب المسجلون', value: students, icon:'ph-fill ph-student', color:'var(--primary)' },
-      { label:'المتطوعون النشطون', value: volunteers, icon:'ph-fill ph-hand-heart', color:'var(--teal)' },
-      { label:'الكورسات النشطة', value: (courses||[]).length, icon:'ph-fill ph-book-open', color:'var(--gold)' },
-      { label:'الشهادات الصادرة', value: (certs||[]).length, icon:'ph-fill ph-certificate', color:'var(--red)' },
+    var d = await API.fetchAnalyticsBundle();
+    var students = d.profs.filter(function (p) { return p.role === 'student'; }).length;
+    var vols = d.profs.filter(function (p) { return p.role === 'volunteer'; }).length;
+    var kpis = [
+      { label: 'الطلاب', value: students, icon: 'ph-fill ph-student', color: 'var(--primary)' },
+      { label: 'المتطوعون', value: vols, icon: 'ph-fill ph-hand-heart', color: 'var(--teal)' },
+      { label: 'الكورسات', value: d.courses.length, icon: 'ph-fill ph-book-open', color: 'var(--gold)' },
+      { label: 'الشهادات', value: d.certs.length, icon: 'ph-fill ph-certificate', color: 'var(--red)' }
     ];
-    const statsEl = document.getElementById('ah-stats');
-    if (statsEl) {
-      statsEl.innerHTML = kpis.map(k => `
-        <div class="kpi-card card p-3 flex flex-col justify-between" style="border-radius:18px">
-          <i class="${esc(k.icon)}" style="font-size:22px;color:${esc(k.color)}"></i>
-          <div class="text-xl font-bold mt-2">${k.value}</div>
-          <div class="text-xs text-muted">${esc(k.label)}</div>
-        </div>`).join('');
-    }
-  } catch(e) { console.warn('Admin home stats error:', e); }
+    var statsEl = document.getElementById('ah-stats');
+    if (statsEl) statsEl.innerHTML = kpis.map(function (k) {
+      return '<div class="kpi-card card p-3"><i class="' + esc(k.icon) + '" style="font-size:22px;color:' + k.color + '"></i><div class="text-xl font-bold mt-2">' + k.value + '</div><div class="text-xs text-muted">' + esc(k.label) + '</div></div>';
+    }).join('');
+  } catch (e) { console.warn(e); }
 }
 
-/* ═══════════════ ADMIN USERS ═══════════════ */
 async function renderAdminUsers() {
-  const cntEl  = document.getElementById('au-count');
-  const listEl = document.getElementById('au-list');
+  var listEl = document.getElementById('au-list');
+  var cntEl = document.getElementById('au-count');
   if (!listEl) return;
-  listEl.innerHTML = emptyState('ph-spinner','جارٍ تحميل المستخدمين...','');
-  const profiles = await fetchAllProfiles();
-  if (cntEl) cntEl.textContent = profiles.length;
-  if (!profiles.length) { listEl.innerHTML = emptyState('ph-users','لا توجد حسابات مسجلة',''); return; }
-  listEl.innerHTML = profiles.map(p => `
-    <div class="c-card" style="cursor:default">
-      <div class="avatar w-11 h-11 text-sm">${avatarHTML(p)}</div>
-      <div class="flex-1">
-        <div class="text-sm font-bold">${esc(p.full_name)}</div>
-        <div class="text-[11px]" style="color:var(--mut)">${p.role==='student'?'طالب':p.role==='volunteer'?'متطوع':'مشرف'} · ${esc(p.branch||'—')}</div>
-        <div class="text-[10px]" style="color:var(--mut)" dir="ltr">${esc(p.email||'')}</div>
-      </div>
-      <div class="flex flex-col gap-1 items-end">
-        <span class="status-chip ${p.status==='active'?'st-a':p.status==='pending'?'st-p':'st-r'}">${p.status==='active'?'نشط':p.status==='pending'?'معلق':'غير نشط'}</span>
-        ${p.id !== CURRENT_USER?.id ? `<button class="chip text-[10px] cursor-pointer" onclick="changeUserRole('${esc(p.id)}','${esc(p.full_name)}','${esc(p.role)}')" style="padding:3px 8px"><i class="ph ph-pencil"></i> دور</button>` : ''}
-      </div>
-    </div>`).join('');
+  listEl.innerHTML = UI.skeleton(5);
+  try {
+    var profiles = await API.fetchAllProfiles();
+    window._allProfiles = profiles;
+    if (cntEl) cntEl.textContent = profiles.length;
+    paintUsers(profiles);
+  } catch (e) { listEl.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
-async function changeUserRole(userId, userName, currentRole) {
-  const roles = { student:'طالب', volunteer:'متطوع', admin:'مشرف' };
-  const nextRole = currentRole==='student'?'volunteer':currentRole==='volunteer'?'admin':'student';
-  showConfirm(`تغيير دور "${userName}"؟`, `سيتم تغيير الدور من "${roles[currentRole]}" إلى "${roles[nextRole]}".`, async () => {
-    if (!window.supabaseClient) return;
-    const { error } = await window.supabaseClient.from('profiles').update({ role: nextRole }).eq('id', userId);
-    if (error) { toast('خطأ: '+error.message,'err'); return; }
-    toast(`تم تغيير دور ${userName} إلى ${roles[nextRole]} ✓`, 'ok');
-    renderAdminUsers();
-  }, { yesLabel: `تغيير إلى ${roles[nextRole]}` });
+function filterAdminUsers(q) {
+  var all = window._allProfiles || [];
+  q = (q || '').trim().toLowerCase();
+  var role = (document.getElementById('au-role') || {}).value || '';
+  paintUsers(all.filter(function (p) {
+    var okQ = !q || [p.full_name, p.email, p.phone].join(' ').toLowerCase().indexOf(q) !== -1;
+    var okR = !role || p.role === role;
+    return okQ && okR;
+  }));
 }
 
-/* ═══════════════ ADMIN COURSES ═══════════════ */
-async function renderAdminCourses() {
-  const listEl = document.getElementById('ac-list');
+function paintUsers(profiles) {
+  var listEl = document.getElementById('au-list');
   if (!listEl) return;
-  listEl.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  const courses = await fetchCourses(true);
-  if (!courses.length) { listEl.innerHTML = emptyState('ph-book-open','لا توجد كورسات','اضغط إضافة لإنشاء أول كورس','إضافة كورس','openAddCourseModal()'); return; }
-  listEl.innerHTML = courses.map(c => `
-    <div class="card p-3 mb-2 flex items-center gap-3">
-      <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-      <div class="flex-1">
-        <div class="text-sm font-bold">${esc(c.title)}</div>
-        <div class="text-[11px]" style="color:var(--mut)">${esc(c.category||'')} · ${c.sessions_count||0} محاضرة · ${esc(c.start_date?('بداية '+c.start_date):'')}</div>
-      </div>
-      <div class="flex flex-col gap-1 items-end">
-        <button class="chip text-[10px] text-primary cursor-pointer" onclick="openEditCourseModal('${esc(c.id)}')"><i class="ph ph-pencil"></i> تعديل</button>
-        <button class="chip text-[10px] cursor-pointer" onclick="deleteCourse('${esc(c.id)}','${esc(c.title)}')" style="padding:3px 8px;color:var(--red)"><i class="ph ph-trash"></i> حذف</button>
-      </div>
-    </div>`).join('');
-}
-
-async function deleteCourse(courseId, courseTitle) {
-  showConfirm(`حذف كورس "${courseTitle}"؟`, 'سيتم حذف الكورس وجميع بياناته المرتبطة. هذا الإجراء لا يمكن التراجع عنه.', async () => {
-    if (!window.supabaseClient) return;
-    const { error } = await window.supabaseClient.from('courses').update({ is_active: false }).eq('id', courseId);
-    if (error) { toast('خطأ: '+error.message,'err'); return; }
-    _coursesCache = null;
-    toast('تم حذف الكورس ✓','ok');
-    renderAdminCourses();
-  }, { yesLabel: 'حذف نهائياً' });
-}
-
-async function openEditCourseModal(courseId) {
-  let old = document.getElementById('modal-edit-course'); if (old) old.remove();
-  const courses = _coursesCache || await fetchCourses(true);
-  const course = courses.find(c => c.id === courseId);
-  if (!course) { toast('لم يتم العثور على الكورس','err'); return; }
-
-  const modal = document.createElement('div');
-  modal.id = 'modal-edit-course'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold"><i class="ph-bold ph-pencil-simple"></i></div>
-        <div><h3 class="text-base font-bold">تعديل بيانات الدورة التدريبية</h3><p class="text-xs text-muted">تحديث العنوان، المواعيد، التصنيف، والفرع</p></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div><label class="lbl">عنوان الدورة <b>*</b></label><input class="inp" id="ec-title" type="text" value="${esc(course.title)}"></div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="lbl">التصنيف</label><input class="inp" id="ec-cat" type="text" value="${esc(course.category||'عام')}"></div>
-          <div><label class="lbl">عدد المحاضرات</label><input class="inp" id="ec-sessions" type="number" value="${course.sessions_count||8}" min="1" max="50"></div>
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="lbl">تاريخ بداية الكورس</label><input class="inp" id="ec-start" type="text" value="${esc(course.start_date||'')}" placeholder="مثال: 7 يوليو"></div>
-          <div><label class="lbl">تاريخ الإنترفيو</label><input class="inp" id="ec-interview" type="text" value="${esc(course.interview_date||'')}" placeholder="مثال: 6/7/2026"></div>
-        </div>
-        <div>
-          <label class="lbl">الفرع</label>
-          <select class="inp" id="ec-branch">
-            <option value="فرع مدينة نصر" ${course.branch==='فرع مدينة نصر'?'selected':''}>فرع مدينة نصر — القاهرة</option>
-            <option value="فرع مصدق (الدقي)" ${course.branch==='فرع مصدق (الدقي)'?'selected':''}>فرع مصدق (الدقي) — الجيزة</option>
-            <option value="فرع فيصل (الطوابق)" ${course.branch==='فرع فيصل (الطوابق)'?'selected':''}>فرع فيصل (الطوابق) — الجيزة</option>
-            <option value="فرع 6 أكتوبر" ${course.branch==='فرع 6 أكتوبر'?'selected':''}>فرع 6 أكتوبر — الجيزة</option>
-            <option value="فرع سموحة (الإسكندرية)" ${course.branch==='فرع سموحة (الإسكندرية)'?'selected':''}>فرع سموحة — الإسكندرية</option>
-          </select>
-        </div>
-        <div><label class="lbl">الوصف والمحاور</label><textarea class="inp" id="ec-desc" rows="2">${esc(course.description||'')}</textarea></div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="ec-close">إلغاء</button>
-        <button class="btn btn-primary btn-mid flex-1" onclick="saveEditCourse('${esc(course.id)}')"><i class="ph-bold ph-floppy-disk"></i> حفظ التعديلات</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#ec-close').onclick = () => modal.remove();
-}
-
-async function saveEditCourse(courseId) {
-  const title          = document.getElementById('ec-title')?.value.trim();
-  const category       = document.getElementById('ec-cat')?.value.trim() || 'عام';
-  const sessions_count = parseInt(document.getElementById('ec-sessions')?.value) || 8;
-  const start_date     = document.getElementById('ec-start')?.value.trim() || '';
-  const interview_date = document.getElementById('ec-interview')?.value.trim() || '';
-  const branch         = document.getElementById('ec-branch')?.value || 'فرع مدينة نصر';
-  const description    = document.getElementById('ec-desc')?.value.trim() || '';
-
-  if (!title || title.length < 3) { toast('يرجى كتابة عنوان صحيح للدورة','err'); return; }
-
-  if (window.supabaseClient) {
-    try {
-      const { error } = await window.supabaseClient.from('courses').update({
-        title, category, sessions_count, start_date, interview_date, branch, description
-      }).eq('id', courseId);
-      if (error) throw error;
-    } catch(e) { toast('خطأ في حفظ التعديلات: ' + e.message, 'err'); return; }
-  }
-
-  _coursesCache = null;
-  document.getElementById('modal-edit-course')?.remove();
-  toast('تم تحديث بيانات الكورس بنجاح 📚', 'ok');
-  renderAdminCourses();
-  renderVolunteerCoursesList();
-  renderExplore();
-}
-
-/* ═══════════════ VOLUNTEER COURSES & SELF-ASSIGNMENT ═══════════════ */
-async function renderVolunteerCoursesList() {
-  const listEl = document.getElementById('vc-list');
-  if (!listEl) return;
-  const selectEl = document.getElementById('vc-branch-select');
-  const selectedBranch = selectEl ? selectEl.value : (CURRENT_PROFILE?.branch || 'الكل');
-  listEl.innerHTML = emptyState('ph-spinner','جارٍ تحميل الكورسات والمجموعات...','');
-
-  const courses = await fetchCourses(true, selectedBranch);
-  const batches = await fetchBatches(true, selectedBranch);
-
-  if (!courses.length) {
-    listEl.innerHTML = emptyState('ph-book-open','لا توجد كورسات بهذا الفرع','اضغط على زر "+ كورس" لإضافة دورة تدريبية جديدة');
-    return;
-  }
-
-  listEl.innerHTML = courses.map(c => {
-    const cBatches = batches.filter(b => b.course_id === c.id || (b.courses && b.courses.title === c.title));
-    return `<div class="card p-4 mb-3 flex flex-col gap-2">
-      <div class="flex items-start justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="pick-ic" style="background:${esc(c.color||'#00288e')}"><i class="${esc(c.icon||'ph-fill ph-book-open')}"></i></div>
-          <div>
-            <div class="text-sm font-bold">${esc(c.title)}</div>
-            <div class="text-xs text-muted">${esc(c.category||'عام')} · ${esc(c.branch)} · ${c.sessions_count||8} محاضرات</div>
-            ${c.start_date ? `<div class="text-xs text-teal font-bold mt-0.5"><i class="ph-bold ph-calendar"></i> البداية: ${esc(c.start_date)} | المقابلة: ${esc(c.interview_date||'—')}</div>` : ''}
-          </div>
-        </div>
-        <button class="chip text-xs text-primary" onclick="openEditCourseModal('${esc(c.id)}')"><i class="ph ph-pencil"></i> تعديل</button>
-      </div>
-
-      <div class="border-t border-line pt-2 mt-1">
-        <div class="text-xs font-bold text-muted mb-1.5">المجموعات المتاحة للإشراف والتدريس:</div>
-        ${cBatches.length ? cBatches.map(b => {
-          const isMyBatch = b.instructor_id === CURRENT_USER?.id;
-          return `<div class="bg-card-2 p-2.5 rounded-xl flex items-center justify-between gap-2 mb-1.5">
-            <div>
-              <div class="text-xs font-bold">${esc(b.name)}</div>
-              <div class="text-[11px] text-muted">${esc(b.schedule||'')}</div>
-              <div class="text-[11px] font-bold text-primary"><i class="ph-bold ph-chalkboard-teacher"></i> المحاضر: ${esc(b.instructor_name||'سيتم تحديده')}</div>
-            </div>
-            <div>
-              ${isMyBatch ? `<span class="chip text-[10px] bg-teal-50 text-teal border-teal-200">أنت المشرف ✓</span>` : `<button class="btn btn-sm btn-teal text-[11px] py-1 h-auto" onclick="assignSelfAsInstructor('${esc(b.id)}')"><i class="ph-bold ph-hand-pointing"></i> تولّي الإشراف</button>`}
-            </div>
-          </div>`;
-        }).join('') : `<div class="text-xs text-muted">لا توجد مجموعات بعد — <a class="text-primary font-bold" onclick="openAddBatchModal()">إضافة مجموعة</a></div>`}
-      </div>
-    </div>`;
+  if (!profiles.length) { listEl.innerHTML = UI.emptyState('ph-users', 'لا نتائج', ''); return; }
+  var roles = { student: 'طالب', volunteer: 'متطوع', admin: 'مشرف' };
+  listEl.innerHTML = profiles.map(function (p) {
+    var canEdit = CURRENT_USER && p.id !== CURRENT_USER.id && p.role !== 'admin';
+    return '<div class="c-card" style="cursor:default"><div class="avatar w-11 h-11 text-sm">' + UI.avatarHTML(p) + '</div>' +
+      '<div class="flex-1"><div class="text-sm font-bold">' + esc(p.full_name) + '</div>' +
+      '<div class="text-[11px] text-muted">' + esc(roles[p.role] || p.role) + ' · ' + esc((p.branches && p.branches.name_ar) || '—') + '</div>' +
+      '<div class="text-[10px] text-muted" dir="ltr">' + esc(p.email || '') + '</div></div>' +
+      '<div class="flex flex-col gap-1 items-end"><span class="status-chip ' + (p.status === 'active' ? 'st-a' : 'st-r') + '">' + esc(p.status === 'active' ? 'نشط' : 'موقوف') + '</span>' +
+      (canEdit ? '<button class="chip text-[10px]" onclick="changeUserRole(\'' + esc(p.id) + '\',\'' + esc(p.full_name) + '\',\'' + esc(p.role) + '\')">دور</button>' +
+        '<button class="chip text-[10px]" onclick="toggleUserStatus(\'' + esc(p.id) + '\',\'' + esc(p.status) + '\')">' + (p.status === 'active' ? 'إيقاف' : 'تفعيل') + '</button>' : '') +
+      '</div></div>';
   }).join('');
 }
 
-async function assignSelfAsInstructor(batchId) {
-  if (!window.supabaseClient || !CURRENT_USER) return;
-  const myName = CURRENT_PROFILE?.full_name || 'متطوع رسالة';
-  showConfirm('تولّي إشراف هذه المجموعة؟', `سيتم تسجيلك رسمياً كـ (محاضر/مشرف) لهذه المجموعة باسم "${myName}".`, async () => {
+function changeUserRole(userId, userName, currentRole) {
+  var next = currentRole === 'student' ? 'volunteer' : 'student';
+  var labels = { student: 'طالب', volunteer: 'متطوع' };
+  UI.showConfirm('تغيير دور «' + userName + '»؟', 'من ' + labels[currentRole] + ' إلى ' + labels[next] + '. لا يمكن تعيين مشرف من الواجهة.', async function () {
     try {
-      const { error } = await window.supabaseClient.from('batches').update({
-        instructor_id: CURRENT_USER.id,
-        instructor_name: myName
-      }).eq('id', batchId);
-      if (error) throw error;
-      _batchesCache = null;
-      toast('تم تسجيلك مشرفاً لهذه المجموعة بنجاح 🎉', 'ok');
-      renderVolunteerCoursesList();
-      renderVolunteerHome();
-    } catch(e) { toast('خطأ: ' + e.message, 'err'); }
-  }, { yesLabel: 'تأكيد الإشراف' });
+      await API.changeRole(userId, next);
+      toast('تم التحديث ✓', 'ok');
+      renderAdminUsers();
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { danger: false, yesLabel: 'تعيين ك' + labels[next] });
+}
+
+function toggleUserStatus(id, status) {
+  var next = status === 'active' ? 'inactive' : 'active';
+  UI.showConfirm(next === 'inactive' ? 'إيقاف الحساب؟' : 'إعادة التفعيل؟', 'لن يستطيع الموقوف استخدام التطبيق.', async function () {
+    try { await API.setStatus(id, next); renderAdminUsers(); } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { yesLabel: next === 'inactive' ? 'إيقاف' : 'تفعيل' });
+}
+
+async function renderAdminCourses() {
+  var listEl = document.getElementById('ac-list');
+  if (!listEl) return;
+  listEl.innerHTML = UI.skeleton(3);
+  try {
+    var courses = await API.fetchCourses(true);
+    if (!courses.length) { listEl.innerHTML = UI.emptyState('ph-book-open', 'لا كورسات', 'أضف أول دورة', 'إضافة', 'openAddCourseModal()'); return; }
+    listEl.innerHTML = courses.map(function (c) {
+      return '<div class="card p-3 mb-2 flex items-center gap-3"><div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
+        '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title) + '</div>' +
+        '<div class="text-[11px] text-muted">' + esc(c.category || '') + ' · ' + (c.sessions_count || 0) + ' محاضرة · ' + esc((c.branches && c.branches.name_ar) || '') + '</div></div>' +
+        '<div class="flex flex-col gap-1"><button class="chip text-[10px] text-primary" onclick="openEditCourseModal(\'' + esc(c.id) + '\')">تعديل</button>' +
+        '<button class="chip text-[10px]" style="color:var(--red)" onclick="deleteCourse(\'' + esc(c.id) + '\',\'' + esc(c.title) + '\')">إيقاف</button></div></div>';
+    }).join('');
+  } catch (e) { listEl.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+function deleteCourse(id, title) {
+  UI.showConfirm('إيقاف «' + title + '»؟', 'سيختفي من الاستكشاف دون حذف السجلات التاريخية.', async function () {
+    try { await API.softDeleteCourse(id); toast('تم الإيقاف', 'ok'); renderAdminCourses(); }
+    catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { yesLabel: 'إيقاف' });
+}
+
+async function openEditCourseModal(courseId) {
+  var courses = [];
+  try { courses = await API.fetchCourses(true); } catch (e) {}
+  var course = courses.find(function (c) { return c.id === courseId; });
+  if (!course) { toast('الكورس غير موجود', 'err'); return; }
+  var bOpts = _branches.map(function (b) {
+    return '<option value="' + esc(b.id) + '"' + (course.branch_id === b.id ? ' selected' : '') + '>' + esc(b.name_ar) + '</option>';
+  }).join('');
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">تعديل الدورة</h3>' +
+    '<input class="inp" id="ec-title" value="' + esc(course.title) + '">' +
+    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="ec-cat" value="' + esc(course.category || '') + '"><input class="inp" id="ec-sessions" type="number" value="' + (course.sessions_count || 8) + '"></div>' +
+    '<select class="inp" id="ec-branch">' + bOpts + '</select>' +
+    '<textarea class="inp" id="ec-desc" rows="2">' + esc(course.description || '') + '</textarea>' +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveEditCourse(\'' + esc(course.id) + '\')">حفظ</button></div></div>',
+    'modal-edit-course'
+  );
+}
+
+async function saveEditCourse(id) {
+  try {
+    await API.updateCourse(id, {
+      title: (document.getElementById('ec-title') || {}).value,
+      category: (document.getElementById('ec-cat') || {}).value,
+      sessions_count: parseInt((document.getElementById('ec-sessions') || {}).value, 10) || 8,
+      branch_id: (document.getElementById('ec-branch') || {}).value || null,
+      description: (document.getElementById('ec-desc') || {}).value
+    });
+    document.getElementById('modal-edit-course') && document.getElementById('modal-edit-course').remove();
+    toast('تم التحديث', 'ok');
+    renderAdminCourses();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
 function openAddCourseModal() {
-  let old = document.getElementById('modal-add-course'); if (old) old.remove();
-  const modal = document.createElement('div');
-  modal.id = 'modal-add-course'; modal.className = 'modal-bg open';
-  modal.innerHTML = `
-    <div class="modal-sheet text-right max-w-md mx-auto flex flex-col gap-4" style="border-radius:28px">
-      <div class="modal-handle"></div>
-      <div class="flex items-center gap-3 border-b border-line pb-3">
-        <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-xl text-blue-600"><i class="ph-bold ph-book-open"></i></div>
-        <div><h3 class="text-base font-bold">إضافة كورس تعليمي جديد</h3></div>
-      </div>
-      <div class="flex flex-col gap-3">
-        <div><label class="lbl">عنوان الدورة <b>*</b></label><input class="inp" id="nc-title" type="text" placeholder="مثال: أساسيات الذكاء الاصطناعي"></div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="lbl">التصنيف</label><input class="inp" id="nc-cat" type="text" placeholder="تقنية / لغات..."></div>
-          <div><label class="lbl">عدد المحاضرات</label><input class="inp" id="nc-sessions" type="number" value="8" min="1" max="50"></div>
-        </div>
-        <div><label class="lbl">المستوى</label>
-          <select class="inp" id="nc-level">
-            <option value="الكل">الكل</option><option value="مبتدئ">مبتدئ</option><option value="متوسط">متوسط</option><option value="متقدم">متقدم</option>
-          </select>
-        </div>
-        <div><label class="lbl">وصف مبسط</label><textarea class="inp" id="nc-desc" rows="2" placeholder="أدخل تفاصيل ومحاور الدورة..."></textarea></div>
-      </div>
-      <div class="flex gap-2 mt-2">
-        <button class="btn btn-soft btn-mid flex-1" id="nc-close">إلغاء</button>
-        <button class="btn btn-primary btn-mid flex-1" onclick="saveNewCourse()"><i class="ph-bold ph-plus"></i> إضافة الكورس</button>
-      </div>
-    </div>`;
-  document.getElementById('app').appendChild(modal);
-  modal.querySelector('#nc-close').onclick = () => modal.remove();
+  if (!CURRENT_PROFILE || CURRENT_PROFILE.role !== 'admin') { toast('إضافة الكورسات للمشرف فقط', 'err'); return; }
+  var bOpts = _branches.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name_ar) + '</option>'; }).join('');
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">كورس جديد</h3>' +
+    '<input class="inp" id="nc-title" placeholder="عنوان الدورة">' +
+    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="nc-cat" placeholder="التصنيف"><input class="inp" id="nc-sessions" type="number" value="8"></div>' +
+    '<select class="inp" id="nc-branch">' + bOpts + '</select>' +
+    '<textarea class="inp" id="nc-desc" rows="2" placeholder="وصف مختصر"></textarea>' +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveNewCourse()">إضافة</button></div></div>',
+    'modal-add-course'
+  );
 }
 
 async function saveNewCourse() {
-  if (!window.supabaseClient) { toast('يتطلب اتصالاً بالإنترنت','err'); return; }
-  const title    = document.getElementById('nc-title')?.value.trim();
-  const cat      = document.getElementById('nc-cat')?.value.trim() || 'عام';
-  const sessions = parseInt(document.getElementById('nc-sessions')?.value) || 8;
-  const level    = document.getElementById('nc-level')?.value || 'الكل';
-  const desc     = document.getElementById('nc-desc')?.value.trim() || '';
-  if (!title || title.length < 3) { toast('يرجى كتابة عنوان الكورس','err'); return; }
-  const colors = ['#00288e','#00554e','#7a30d8','#d4af37','#1e40af','#ba1a1a','#0b6e63'];
-  const { error } = await window.supabaseClient.from('courses').insert({
-    title, description: desc, category: cat, icon: 'ph-fill ph-book-open',
-    color: colors[Math.floor(Math.random()*colors.length)],
-    sessions_count: sessions, level, created_by: CURRENT_USER?.id
-  });
-  if (error) { toast('خطأ: '+error.message,'err'); return; }
-  _coursesCache = null;
-  document.getElementById('modal-add-course')?.remove();
-  fireConfetti(35);
-  toast('تم إضافة الكورس بنجاح 📚','ok','ph-check-circle');
-  renderAdminCourses();
+  var title = ((document.getElementById('nc-title') || {}).value || '').trim();
+  if (title.length < 3) { toast('اكتب عنواناً', 'err'); return; }
+  var colors = ['#00288e', '#00554e', '#7a30d8', '#d4af37', '#1e40af', '#ba1a1a'];
+  try {
+    await API.createCourse({
+      title: title, category: (document.getElementById('nc-cat') || {}).value || 'عام',
+      sessions_count: parseInt((document.getElementById('nc-sessions') || {}).value, 10) || 8,
+      branch_id: (document.getElementById('nc-branch') || {}).value || null,
+      description: (document.getElementById('nc-desc') || {}).value || '',
+      icon: 'ph-fill ph-book-open', color: colors[Math.floor(Math.random() * colors.length)],
+      created_by: CURRENT_USER && CURRENT_USER.id
+    });
+    document.getElementById('modal-add-course') && document.getElementById('modal-add-course').remove();
+    UI.fireConfetti(28);
+    toast('تمت إضافة الكورس', 'ok');
+    renderAdminCourses();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-/* ═══════════════ ADMIN CERTS ═══════════════ */
 async function renderAdminCerts() {
-  const listEl = document.getElementById('acerts-list');
+  var listEl = document.getElementById('acerts-list');
   if (!listEl) return;
-  listEl.innerHTML = emptyState('ph-spinner','جارٍ التحميل...','');
-  if (!window.supabaseClient) { listEl.innerHTML = emptyState('ph-warning','يتطلب اتصالاً',''); return; }
+  listEl.innerHTML = UI.skeleton(4);
   try {
-    const { data, error } = await window.supabaseClient
-      .from('certs')
-      .select('*, profiles!student_id(full_name), courses(title)')
-      .order('issued_at', { ascending: false })
-      .limit(50);
-    if (error) throw error;
-    if (!data?.length) { listEl.innerHTML = emptyState('ph-certificate','لا توجد شهادات صادرة بعد',''); return; }
-    listEl.innerHTML = data.map(cert => `
-      <div class="card p-3 mb-2 flex items-center justify-between">
-        <div>
-          <div class="text-sm font-bold">${esc((cert.profiles||{}).full_name||'—')}</div>
-          <div class="text-[11px]" style="color:var(--mut)">${esc((cert.courses||{}).title||'—')}</div>
-          <div class="text-[10px]" style="color:var(--mut)" dir="ltr"># ${esc(cert.serial_number)}</div>
-        </div>
-        <div class="text-xs font-semibold" style="color:var(--teal)">${new Date(cert.issued_at).toLocaleDateString('ar-EG')}</div>
-      </div>`).join('');
-  } catch(e) { listEl.innerHTML = emptyState('ph-warning','خطأ في التحميل',e.message); }
+    var data = await API.fetchCerts(false);
+    listEl.innerHTML = data.length ? data.map(function (cert) {
+      return '<div class="card p-3 mb-2 flex justify-between"><div><div class="text-sm font-bold">' + esc((cert.profiles && cert.profiles.full_name) || '—') + '</div>' +
+        '<div class="text-[11px] text-muted">' + esc((cert.courses && cert.courses.title) || '') + '</div>' +
+        '<div class="text-[10px] text-muted" dir="ltr"># ' + esc(cert.serial_number) + '</div></div>' +
+        '<div class="text-xs" style="color:var(--teal)">' + new Date(cert.issued_at).toLocaleDateString('ar-EG') + '</div></div>';
+    }).join('') : UI.emptyState('ph-certificate', 'لا شهادات صادرة', '');
+  } catch (e) { listEl.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
-/* ═══════════════ ADMIN SETTINGS ═══════════════ */
-function renderAdminSettings() { /* static page */ }
+function renderAdminSettings() { /* static + wired buttons in HTML */ }
 
-/* ═══════════════ ANALYTICS DASHBOARD (real data) ═══════════════ */
+async function renderBranchesAdmin() {
+  var el = document.getElementById('ab-list');
+  if (!el) return;
+  try {
+    _branches = await API.fetchBranches(true);
+    el.innerHTML = _branches.map(function (b) {
+      return '<div class="card p-3 mb-2"><div class="font-bold text-sm">' + esc(b.name_ar) + '</div>' +
+        '<div class="text-xs text-muted mt-1">' + esc(b.address || '') + '</div>' +
+        '<div class="text-[11px] mt-1">خط ساخن ' + esc(b.hotline || '19450') + (b.whatsapp ? ' · واتساب ' + esc(b.whatsapp) : '') + '</div>' +
+        (b.facebook_url ? '<a class="text-xs text-primary" href="' + esc(b.facebook_url) + '" target="_blank" rel="noopener">صفحة فيسبوك</a>' : '') + '</div>';
+    }).join('');
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+function renderBroadcast() {
+  var el = document.getElementById('bc-box');
+  if (!el) return;
+  var bOpts = _branches.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name_ar) + '</option>'; }).join('');
+  el.innerHTML =
+    '<div class="card p-4 flex flex-col gap-3">' +
+    '<select class="inp" id="bc-scope" onchange="document.getElementById(\'bc-branch-wrap\').classList.toggle(\'hidden\', this.value!==\'branch\')">' +
+    '<option value="all">كل المستخدمين النشطين</option><option value="branch">فرع محدد</option></select>' +
+    '<div id="bc-branch-wrap" class="hidden"><select class="inp" id="bc-branch">' + bOpts + '</select></div>' +
+    '<select class="inp" id="bc-type"><option value="announcement">إعلان</option><option value="postponed">تأجيل عام</option></select>' +
+    '<input class="inp" id="bc-title" placeholder="العنوان">' +
+    '<textarea class="inp" id="bc-msg" rows="3" placeholder="نص الرسالة"></textarea>' +
+    '<button class="btn btn-primary btn-mid" onclick="sendBroadcast()">إرسال البث</button></div>';
+}
+
+async function sendBroadcast() {
+  var scope = (document.getElementById('bc-scope') || {}).value;
+  var sid = scope === 'branch' ? (document.getElementById('bc-branch') || {}).value : null;
+  try {
+    var n = await API.broadcast(scope, sid, (document.getElementById('bc-type') || {}).value, (document.getElementById('bc-title') || {}).value, (document.getElementById('bc-msg') || {}).value);
+    toast('وصل إلى ' + n + ' مستخدم', 'ok');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
 async function renderAnalytics() {
-  const body = document.getElementById('analytics-body');
+  var body = document.getElementById('analytics-body');
   if (!body) return;
-  body.innerHTML = emptyState('ph-spinner','جارٍ تحميل بيانات حقيقية من Supabase...','');
-  if (!window.supabaseClient) { body.innerHTML = emptyState('ph-database','يتطلب الاتصال بقاعدة البيانات',''); return; }
+  body.innerHTML = UI.skeleton(4);
   try {
-    const [
-      { data: profs  }, { data: courses }, { data: batches },
-      { data: certs  }, { data: att     }, { data: enrollments }
-    ] = await Promise.all([
-      window.supabaseClient.from('profiles').select('id, full_name, role, branch, points, created_at, email').order('created_at', { ascending: false }),
-      window.supabaseClient.from('courses').select('*').eq('is_active', true),
-      window.supabaseClient.from('batches').select('*').eq('is_active', true),
-      window.supabaseClient.from('certs').select('id'),
-      window.supabaseClient.from('attendance').select('id, status, created_at'),
-      window.supabaseClient.from('enrollments').select('id'),
-    ]);
-
-    const allProfs   = profs || [];
-    const allCourses = courses || [];
-    const allBatches = batches || [];
-    const allCerts   = certs || [];
-    const allAtt     = att || [];
-    const allEnroll  = enrollments || [];
-
-    const students   = allProfs.filter(p => p.role==='student');
-    const volunteers = allProfs.filter(p => p.role==='volunteer');
-    const present    = allAtt.filter(a => a.status==='present').length;
-    const absent     = allAtt.filter(a => a.status==='absent').length;
-    const attRate    = allAtt.length ? Math.round(present/allAtt.length*100) : 0;
-
-    body.innerHTML = `
-      <div class="flex flex-col gap-4">
-        <div class="card p-4 flex items-center justify-between bg-green-50 border-green-200">
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-teal flex items-center justify-center text-white text-xl"><i class="ph-bold ph-database"></i></div>
-            <div><div class="text-xs font-bold text-muted">حالة قاعدة البيانات</div><div class="text-sm font-bold" style="color:var(--teal)">متصل بـ Supabase — بيانات حية 🟢</div></div>
-          </div>
-          <button class="btn btn-sm btn-soft" onclick="renderAnalytics()"><i class="ph-bold ph-arrows-clockwise"></i></button>
-        </div>
-
-        <div class="grid grid-cols-2 gap-3" id="ah-stats-analytics">
-          ${[
-            { label:'إجمالي الطلاب', val: students.length, icon:'ph-fill ph-student', color:'var(--primary)' },
-            { label:'المتطوعون', val: volunteers.length, icon:'ph-fill ph-hand-heart', color:'var(--teal)' },
-            { label:'الكورسات', val: allCourses.length, icon:'ph-fill ph-book-open', color:'var(--gold)' },
-            { label:'المجموعات', val: allBatches.length, icon:'ph-fill ph-users-three', color:'#7a30d8' },
-            { label:'التسجيلات', val: allEnroll.length, icon:'ph-fill ph-clipboard-text', color:'#0b6e63' },
-            { label:'الشهادات', val: allCerts.length, icon:'ph-fill ph-certificate', color:'var(--red)' },
-            { label:'جلسات الحضور', val: allAtt.length, icon:'ph-fill ph-calendar-check', color:'#1e40af' },
-            { label:'معدل الحضور', val: attRate+'%', icon:'ph-fill ph-chart-line-up', color:'#854d0e' },
-          ].map(k=>`<div class="kpi-card card p-3 flex flex-col"><i class="${esc(k.icon)}" style="font-size:20px;color:${esc(k.color)}"></i><div class="text-xl font-bold mt-2">${esc(String(k.val))}</div><div class="text-xs text-muted">${esc(k.label)}</div></div>`).join('')}
-        </div>
-
-        <div>
-          <div class="sec-t">أحدث المستخدمين المسجلين (${allProfs.length} حساب)</div>
-          <div class="card overflow-hidden">
-            ${allProfs.slice(0,15).map(p=>`
-              <div class="p-3 flex items-center justify-between text-xs border-b border-line last:border-0">
-                <div class="flex items-center gap-2">
-                  <div class="avatar w-8 h-8 text-xs">${avatarHTML(p)}</div>
-                  <div>
-                    <div class="font-bold text-sm">${esc(p.full_name||'—')}</div>
-                    <div class="text-[10px] text-muted">${esc(p.branch||'')} · ${esc(p.email||'')}</div>
-                  </div>
-                </div>
-                <div class="flex flex-col items-end gap-1">
-                  <span class="status-chip ${p.role==='student'?'st-a':p.role==='volunteer'?'st-p':'st-r'}">${p.role==='student'?'طالب':p.role==='volunteer'?'متطوع':'مشرف'}</span>
-                  <span class="text-[10px] text-muted">${p.points||0} نقطة</span>
-                </div>
-              </div>`).join('')}
-          </div>
-        </div>
-
-        <div>
-          <div class="sec-t">الكورسات والمجموعات النشطة</div>
-          <div class="card overflow-hidden">
-            ${allBatches.slice(0,10).map(b=>`
-              <div class="p-3 flex items-center justify-between border-b border-line last:border-0">
-                <div>
-                  <div class="text-sm font-bold">${esc(b.name)}</div>
-                  <div class="text-[11px] text-muted">${esc(b.branch)} · ${esc(b.schedule||'')}</div>
-                </div>
-                <span class="status-chip st-a">${b.sessions_done||0} محاضرة</span>
-              </div>`).join('') || '<div class="p-4 text-center text-xs text-muted">لا توجد مجموعات بعد</div>'}
-          </div>
-        </div>
-      </div>`;
-  } catch(e) { body.innerHTML = emptyState('ph-warning','خطأ في تحميل البيانات',e.message); }
+    var d = await API.fetchAnalyticsBundle();
+    var students = d.profs.filter(function (p) { return p.role === 'student'; });
+    var vols = d.profs.filter(function (p) { return p.role === 'volunteer'; });
+    var present = d.att.filter(function (a) { return a.status === 'present'; }).length;
+    var attRate = d.att.length ? Math.round(present / d.att.length * 100) : 0;
+    var light = CURRENT_PROFILE && CURRENT_PROFILE.role === 'volunteer';
+    body.innerHTML =
+      '<div class="grid grid-cols-2 gap-3">' +
+      [{ l: 'الطلاب', v: students.length, i: 'ph-fill ph-student', c: 'var(--primary)' },
+        { l: 'المتطوعون', v: vols.length, i: 'ph-fill ph-hand-heart', c: 'var(--teal)' },
+        { l: 'الكورسات', v: d.courses.length, i: 'ph-fill ph-book-open', c: 'var(--gold)' },
+        { l: 'المجموعات', v: d.batches.length, i: 'ph-fill ph-users-three', c: '#7a30d8' },
+        { l: 'التسجيلات', v: d.enroll.length, i: 'ph-fill ph-clipboard-text', c: '#0b6e63' },
+        { l: 'الشهادات', v: d.certs.length, i: 'ph-fill ph-certificate', c: 'var(--red)' },
+        { l: 'سجلات الحضور', v: d.att.length, i: 'ph-fill ph-calendar-check', c: '#1e40af' },
+        { l: 'معدل الحضور', v: attRate + '%', i: 'ph-fill ph-chart-line-up', c: '#854d0e' }
+      ].map(function (k) {
+        return '<div class="kpi-card card p-3"><i class="' + k.i + '" style="font-size:20px;color:' + k.c + '"></i><div class="text-xl font-bold mt-2">' + k.v + '</div><div class="text-xs text-muted">' + k.l + '</div></div>';
+      }).join('') + '</div>' +
+      (light ? '<p class="text-[11px] text-muted mt-3">عرض تشغيلي. التفاصيل الشخصية الكاملة للمشرف فقط.</p>' : '') +
+      '<div class="sec-t mt-4">أحدث الحسابات</div><div class="card overflow-hidden">' +
+      d.profs.slice(0, 12).map(function (p) {
+        return '<div class="p-3 flex items-center justify-between border-b border-line last:border-0"><div class="flex items-center gap-2"><div class="avatar w-8 h-8 text-xs">' + UI.avatarHTML(p) + '</div>' +
+          '<div><div class="font-bold text-sm">' + esc(p.full_name || '—') + '</div>' +
+          '<div class="text-[10px] text-muted">' + esc(p.role) + (CURRENT_PROFILE.role === 'admin' ? ' · ' + esc(p.email || '') : '') + '</div></div></div>' +
+          '<span class="text-[10px] text-muted">' + (p.points || 0) + ' ن</span></div>';
+      }).join('') + '</div>';
+  } catch (e) { body.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e), t('retry'), 'renderAnalytics()'); }
 }
 
-/* ═══════════════ DARK MODE & LOGOUT ═══════════════ */
-function askLogout() {
-  showConfirm('تسجيل الخروج؟', 'هل أنت متأكد من تسجيل الخروج؟', async () => {
-    if (window.supabaseClient) await window.supabaseClient.auth.signOut();
-    CURRENT_USER = null; CURRENT_PROFILE = null;
-    _coursesCache = null; _batchesCache = null;
-    localStorage.clear();
-    location.reload();
-  }, { yesLabel: 'تسجيل الخروج' });
-}
+/* ═══════════════ Init ═══════════════ */
+window.addEventListener('online', function () { toast(t('online'), 'ok'); });
+window.addEventListener('offline', function () { toast(t('offline'), 'warn'); });
 
-function parseGoogleJwtFromHash() {
-  try {
-    if (!window.location.hash || !window.location.hash.includes('access_token')) return null;
-    const hashParams = new URLSearchParams(window.location.hash.substring(1));
-    const token = hashParams.get('access_token');
-    if (!token) return null;
-
-    const base64Url = token.split('.')[1];
-    if (!base64Url) return null;
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-    const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-    const payload = JSON.parse(jsonPayload);
-
-    if (payload && payload.sub && payload.email) {
-      const meta = payload.user_metadata || {};
-      const user = {
-        id: payload.sub,
-        email: payload.email,
-        user_metadata: {
-          full_name: meta.full_name || meta.name || payload.email.split('@')[0],
-          name: meta.full_name || meta.name || payload.email.split('@')[0],
-          avatar_url: meta.avatar_url || meta.picture || null,
-          picture: meta.avatar_url || meta.picture || null
-        }
-      };
-      return { user, access_token: token, rawPayload: payload };
-    }
-  } catch(e) {
-    console.warn('Error parsing Google OAuth hash token:', e);
-  }
-  return null;
-}
-
-/* ═══════════════ APP INIT ═══════════════ */
-let _authHandled = false;
-
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async function () {
   applyDarkMode();
-
-  // 1. Direct parsing of Google OAuth return token from URL Hash
-  const directOAuth = parseGoogleJwtFromHash();
-  if (directOAuth?.user) {
-    _authHandled = true;
-    CURRENT_USER = directOAuth.user;
-    await handleAuthSession({ user: directOAuth.user });
-    return;
-  }
-
-  const isOAuthReturn = window.location.hash && (window.location.hash.includes('access_token') || window.location.hash.includes('token_type'));
-  if (isOAuthReturn) {
-    _authHandled = true;
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    const onbScreen = document.getElementById('screen-onboarding');
-    if (onbScreen) onbScreen.classList.add('active');
-    currentScreenId = 'onboarding';
-    nextOnbStep(5);
-  }
+  applyI18nNav();
 
   if (!window.supabaseClient) {
-    console.warn('Supabase client not available');
-    setTimeout(() => { if (!_authHandled) { showScreenEl('onboarding'); nextOnbStep(1); } }, 1200);
+    setTimeout(function () { if (!_authHandled) { showScreenEl('onboarding'); nextOnbStep(1); } }, 900);
     return;
   }
 
-  // Listen to auth state changes (handles OAuth redirect)
-  window.supabaseClient.auth.onAuthStateChange(async (event, session) => {
-    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
-      _authHandled = true;
-      CURRENT_USER = session.user;
-      await handleAuthSession(session);
+  window.supabaseClient.auth.onAuthStateChange(function (event, session) {
+    if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session && session.user) {
+      if (event !== 'TOKEN_REFRESHED' || !CURRENT_PROFILE) afterAuth(session);
     } else if (event === 'SIGNED_OUT') {
-      CURRENT_USER = null; CURRENT_PROFILE = null;
-      try { localStorage.removeItem('rtc_user_profile'); } catch(e) {}
+      CURRENT_USER = CURRENT_PROFILE = null;
     }
   });
 
-  // Check existing session or cached profile
   try {
-    let cachedProf = null;
-    try {
-      const stored = localStorage.getItem('rtc_user_profile');
-      if (stored) cachedProf = JSON.parse(stored);
-    } catch(e) {}
-
-    const { data: { session } } = await window.supabaseClient.auth.getSession();
-    if (session?.user) {
-      _authHandled = true;
-      CURRENT_USER = session.user;
-      await handleAuthSession(session);
+    var recovered = null;
+    try { recovered = await API.recoverHashSession(); } catch (e0) { console.warn(e0); }
+    var session = recovered || await API.getSession();
+    if (session && session.user) {
+      await afterAuth(session);
       return;
     }
+  } catch (e) { console.warn(e); }
 
-    if (cachedProf && cachedProf.full_name && cachedProf.phone && cachedProf.phone.trim().length >= 10) {
-      _authHandled = true;
-      CURRENT_PROFILE = cachedProf;
-      applyDarkMode();
-      routeToRoleHome();
-      return;
-    }
-  } catch(e) { console.warn('Session check error:', e); }
+  setTimeout(function () {
+    if (!_authHandled) { showScreenEl('onboarding'); nextOnbStep(1); }
+  }, 800);
 
-  // Only route to onboarding step 1 if no auth handling has occurred
-  setTimeout(() => {
-    if (!_authHandled) {
-      showScreenEl('onboarding');
-      nextOnbStep(1);
-    }
-  }, 1000);
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js?v=9.0.0').catch(function () {});
+  }
 });
-
-/* CSS animation for spinner */
-const style = document.createElement('style');
-style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-document.head.appendChild(style);

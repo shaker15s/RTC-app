@@ -1,7 +1,7 @@
 {
   "name": "rtc-app",
-  "version": "2.0.0",
-  "description": "RTC - نظام متابعة مستفيدي الكورسات المجانية",
+  "version": "9.0.0",
+  "description": "مسار RTC — نظام متابعة مستفيدي الكورسات المجانية",
   "main": "index.html",
   "scripts": {
     "dev": "npx -y http-server -p 5173",
