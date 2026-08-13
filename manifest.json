@@ -7,6 +7,7 @@
   "orientation": "portrait-primary",
   "background_color": "#00288e",
   "theme_color": "#00288e",
+  "id": "/",
   "icons": [
     {
       "src": "icon-192.png",

@@ -1,25 +1,25 @@
-/* ═══════════════════════════════════════════════════════════════
-   Supabase Client Configuration & Auto-Connection Initializer
-   ═══════════════════════════════════════════════════════════════ */
+/* Supabase browser client — anon key only. Never a service_role key. */
 (function initSupabase() {
-  // Supabase URL & Public Anon Key for RTC Resala App
-  const SUPABASE_URL = "https://jwhedqmszbdougsqqmhv.supabase.co";
-  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3aGVkcW1zemJkb3Vnc3FxbWh2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0MTc3MDQsImV4cCI6MjEwMTk5MzcwNH0.YqFPCxQBHph6h3yKdxp1Cjo12-ZfcYZdm-fKhuVUxSM";
-
-  if (window.supabase && window.supabase.createClient) {
-    try {
-      window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true
-        }
-      });
-      console.log('✓ Supabase Client initialized successfully:', SUPABASE_URL);
-    } catch(e) {
-      console.warn('Supabase init warning:', e);
-    }
-  } else {
-    console.warn('Supabase SDK script not loaded yet');
+  var url = (window.RTC_CONFIG && window.RTC_CONFIG.supabaseUrl) || '';
+  var key = (window.RTC_CONFIG && window.RTC_CONFIG.supabaseAnonKey) || '';
+  if (!url || !key) {
+    console.warn('RTC: missing supabase config');
+    return;
+  }
+  if (!window.supabase || !window.supabase.createClient) {
+    console.warn('RTC: supabase-js not loaded');
+    return;
+  }
+  try {
+    window.supabaseClient = window.supabase.createClient(url, key, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'implicit'
+      }
+    });
+  } catch (e) {
+    console.warn('RTC: supabase init failed');
   }
 })();
