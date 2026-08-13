@@ -1,4 +1,4 @@
-const VERSION = 'rtc-v10.0.1';
+const VERSION = 'rtc-v10.0.2';
 const PRECACHE = [
   './',
   './index.html',
@@ -6,15 +6,15 @@ const PRECACHE = [
   './privacy.html',
   './terms.html',
   './manifest.json',
-  './app.js?v=10.0.1',
-  './js/config.js?v=10.0.1',
-  './js/supabaseClient.js?v=10.0.1',
-  './js/native.js?v=10.0.1',
-  './js/motion.js?v=10.0.1',
-  './js/security.js?v=10.0.1',
-  './js/i18n.js?v=10.0.1',
-  './js/ui.js?v=10.0.1',
-  './js/api.js?v=10.0.1'
+  './app.js?v=10.0.2',
+  './js/config.js?v=10.0.2',
+  './js/supabaseClient.js?v=10.0.2',
+  './js/native.js?v=10.0.2',
+  './js/motion.js?v=10.0.2',
+  './js/security.js?v=10.0.2',
+  './js/i18n.js?v=10.0.2',
+  './js/ui.js?v=10.0.2',
+  './js/api.js?v=10.0.2'
 ];
 
 self.addEventListener('install', (event) => {

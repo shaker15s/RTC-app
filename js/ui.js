@@ -179,6 +179,15 @@
 
   function humanError(e) {
     var m = (e && (e.message || e.error_description || e.hint)) || String(e || '');
+    var code = String((e && e.code) || '');
+    if (/^23505$/.test(code) || /duplicate key/i.test(m)) {
+      if (/phone|موبايل|هاتف/i.test(m)) return 'رقم الموبايل ده مربوط بحساب تاني. سجّل دخولك بحساب Google الأصلي أو تواصل مع المشرف.';
+      return 'البيانات دي مسجلة من قبل — راجع المدخلات وحاول تاني.';
+    }
+    if (/^PGRST116$/i.test(code) || /multiple \(or no\) rows/i.test(m) || /profile-missing/i.test(m)) {
+      return 'تعذّر تحديث ملفك — جرّب مرة أخرى، ولو استمرت المشكلة امسح التخزين من شاشة الدخول وسجّل من جديد.';
+    }
+    if (/account inactive/i.test(m)) return 'تم إيقاف الحساب. تواصل مع المشرف.';
     if (/auth required|JWT/i.test(m)) return t('needLogin');
     if (/permission|policy|row-level|غير مسموح|صلاحية/i.test(m)) return 'ليست لديك صلاحية لهذا الإجراء';
     if (/network|Failed to fetch|Load failed/i.test(m)) return 'تعذّر الاتصال. تحقق من الإنترنت.';

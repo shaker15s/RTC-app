@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   مسار RTC v10.0.1 — محرك الواجهة
+   مسار RTC v10.0.2 — محرك الواجهة
    الهوية من JWT فقط. الأدوار من السيرفر. الكتابة الحساسة عبر RPC.
    ═══════════════════════════════════════════════════════════════ */
 var CURRENT_USER = null;
@@ -370,13 +370,25 @@ function openBranchPicker(currentId, onSelect) {
   UI.openPicker({ title: 'اختر الفرع', subtitle: 'الفرع يحدد كورساتك وإشعاراتك', items: items, currentVal: currentId, onSelect: onSelect });
 }
 
+/* يوحّد الأرقام: «٠١٠…» العربية/الفارسية → لاتينية، ويشيل المسافات والشرطات */
+function normalizePhoneDigits(s) {
+  var AR = '٠١٢٣٤٥٦٧٨٩';
+  var FA = '۰۱۲۳۴۵۶۷۸۹';
+  return String(s || '').replace(/[٠-٩۰-۹]/g, function (d) {
+    var i = AR.indexOf(d); if (i !== -1) return String(i);
+    var j = FA.indexOf(d); if (j !== -1) return String(j);
+    return d;
+  }).replace(/[^0-9]/g, '');
+}
+
 async function submitProfile(el) {
   var nameEl = document.getElementById('onb-name');
   var phoneEl = document.getElementById('onb-phone');
   var branchEl = document.getElementById('onb-address');
   if (!nameEl || !phoneEl) return;
-  var name = nameEl.value.trim();
-  var phone = phoneEl.value.trim();
+  var name = nameEl.value.trim().replace(/\s+/g, ' ');
+  var phone = normalizePhoneDigits(phoneEl.value);
+  if (phoneEl.value !== phone) phoneEl.value = phone;
   var branchId = (branchEl && branchEl.value) || (_branches[0] && _branches[0].id);
   clearFieldError('onb-name', 'err-name'); clearFieldError('onb-phone', 'err-phone');
   var ok = true;
@@ -388,6 +400,11 @@ async function submitProfile(el) {
   var btn = (el && el.nodeType === 1) ? el : document.querySelector('#onb-step-2 .btn-primary');
   await runBtn(btn, async function () {
     CURRENT_PROFILE = await API.updateMyProfile({ full_name: name, phone: phone, branch_id: branchId || null });
+    if (!CURRENT_PROFILE) throw new Error('profile-missing');
+    if (CURRENT_PROFILE.status && CURRENT_PROFILE.status !== 'active') {
+      toast('تم إيقاف الحساب. تواصل مع المشرف.', 'err');
+      return false;
+    }
     CURRENT_PROFILE.badge_ids = CURRENT_PROFILE.badge_ids || ['welcome'];
     applyDarkMode();
     UI.fireConfetti();
@@ -592,7 +609,14 @@ async function renderExploreListFiltered() {
 
 /* غلاف موحّد لأزرار العمليات: سبينر → ✓ أو هزّة خطأ */
 function runBtn(el, fn, okLabel) {
-  if (el && el.nodeType === 1 && window.RTCMotion) return RTCMotion.withButton(el, fn, okLabel);
+  /* أي فشل لازم يظهر للمستخدم — ممنوع الفشل الصامت */
+  if (el && el.nodeType === 1 && window.RTCMotion) {
+    return RTCMotion.withButton(el, fn, okLabel).catch(function (e) {
+      console.warn('runBtn', e);
+      toast(UI.humanError(e), 'err');
+      return false;
+    });
+  }
   return Promise.resolve(fn()).catch(function (e) { toast(UI.humanError(e), 'err'); return false; });
 }
 
@@ -1756,6 +1780,6 @@ document.addEventListener('DOMContentLoaded', async function () {
   }, 800);
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=10.0.0').catch(function () {});
+    navigator.serviceWorker.register('./sw.js?v=10.0.2').catch(function () {});
   }
 });

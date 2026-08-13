@@ -108,8 +108,19 @@
       dark_mode: patch.dark_mode
     };
     Object.keys(allowed).forEach(function (k) { if (allowed[k] === undefined) delete allowed[k]; });
-    var res = await sb().from('profiles').update(allowed).eq('id', session.user.id).select('*, branches(id, slug, name_ar, facebook_url, whatsapp, hotline, address, city)').single();
-    return unwrap(res);
+    var res = await sb().from('profiles').update(allowed).eq('id', session.user.id).select('*, branches(id, slug, name_ar, facebook_url, whatsapp, hotline, address, city)');
+    if (res.error) throw res.error;
+    if (res.data && res.data.length) return res.data[0];
+    /* حساب بدون صف في profiles (اتسجّل قبل تفعيل الـ trigger مثلاً).
+       ensure_my_profile ينشئ/يحدّث الصف بأمان من السيرفر ثم نعيد الجلب كاملاً. */
+    await rpc('ensure_my_profile', {
+      p_full_name: allowed.full_name || null,
+      p_phone: allowed.phone || null,
+      p_branch: allowed.branch_id || null
+    });
+    var fresh = await fetchMyProfile();
+    if (!fresh) throw new Error('profile-missing');
+    return fresh;
   }
 
   async function fetchBranches(force) {
