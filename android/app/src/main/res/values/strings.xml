@@ -4,4 +4,6 @@
     <string name="title_activity_main">مسار RTC</string>
     <string name="package_name">org.resala.rtc.masar</string>
     <string name="custom_url_scheme">org.resala.rtc.masar</string>
+    <string name="default_notification_channel_id">rtc_updates</string>
+    <string name="notification_channel_name">تحديثات مسار RTC</string>
 </resources>

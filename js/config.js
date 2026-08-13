@@ -5,5 +5,7 @@ window.RTC_CONFIG = {
   version: '100.0.0',
   appName: 'مسار RTC',
   debugAuth: false,
+  /* Android FCM is ready. iOS APNs is disabled for free Personal Team signing. */
+  nativePush: { android: true, ios: false },
   officialUrl: 'https://resala.org/resala-training-centers'
 };

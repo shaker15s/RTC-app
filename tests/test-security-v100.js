@@ -73,6 +73,7 @@ check('branch edits are admin RPCs with HTTPS validation and audit', migration.i
 console.log('\n[V100] Native hardening:');
 const android = read('android/app/src/main/AndroidManifest.xml');
 const gradle = read('android/app/build.gradle');
+const rootGradle = read('android/build.gradle');
 const plist = read('ios/App/App/Info.plist');
 check('Android backup disabled', android.includes('android:allowBackup="false"'));
 check('Android cleartext disabled', android.includes('android:usesCleartextTraffic="false"'));
@@ -80,10 +81,15 @@ check('Android camera permission is optional at device level', android.includes(
 check('Android OAuth deep link exists', android.includes('android:scheme="org.resala.rtc.masar"') && android.includes('android:host="auth"'));
 check('Android release minification enabled', gradle.includes('minifyEnabled true') && gradle.includes('shrinkResources true'));
 check('Android version is synchronized', gradle.includes('versionCode 10000') && gradle.includes('versionName "100.0.0"'));
+check('Firebase Google Services plugin is current and conditional on config', rootGradle.includes('google-services:4.5.0') && gradle.includes("file('google-services.json')"));
+check('Firebase BoM and Analytics are configured once', gradle.includes("firebase-bom:34.17.0") && gradle.includes("firebase-analytics"));
+check('FCM notification defaults use the RTC icon and channel', android.includes('default_notification_icon') && android.includes('default_notification_channel_id'));
 check('QR scanner raises Android minimum SDK deliberately', read('android/variables.gradle').includes('minSdkVersion = 26'));
 check('iOS ATS blocks arbitrary loads', plist.includes('<key>NSAllowsArbitraryLoads</key><false/>'));
 check('iOS OAuth scheme exists', plist.includes('<string>org.resala.rtc.masar</string>'));
 check('iOS push background mode exists', plist.includes('<string>remote-notification</string>'));
+const iosEntitlements = read('ios/App/App/App.entitlements');
+check('free iOS signing mode omits restricted APNs entitlement', !iosEntitlements.includes('<key>aps-environment</key>') && config.includes('ios: false'));
 const appDelegate = read('ios/App/App/AppDelegate.swift');
 check('iOS forwards APNs success and failure to Capacitor', appDelegate.includes('capacitorDidRegisterForRemoteNotifications') && appDelegate.includes('capacitorDidFailToRegisterForRemoteNotifications'));
 check('iOS camera permission explains QR-only purpose', plist.includes('<key>NSCameraUsageDescription</key>') && plist.includes('مسح رمز QR'));

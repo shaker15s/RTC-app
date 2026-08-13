@@ -8,7 +8,8 @@
 |---|---|
 | Web/PWA | Node.js 20+ |
 | Android | JDK 21، Android Studio حديث، Android SDK |
-| iOS | macOS، Xcode 16+، Apple Developer Team |
+| iOS محلي | macOS، Xcode 16+، Apple ID مجاني (Personal Team) |
+| iOS Store/APNs | عضوية Apple Developer Program مدفوعة |
 
 ```bash
 npm install
@@ -30,7 +31,7 @@ npm run icons          # عند تغيير الشعار
 - منع HTTP الواضح ونسخ Android الاحتياطية.
 - Network Security Config يعتمد شهادات النظام فقط.
 - Release R8/shrinkResources ونسخة `100.0.0 (10000)`، وAndroid minSdk 26 لدعم ماسح QR.
-- iOS ATS، وصف إذن الكاميرا، Push entitlement، Remote Notification background mode وإصدار Xcode.
+- iOS ATS ووصف إذن الكاميرا وإصدار Xcode. الوضع الافتراضي يدعم Personal Team بدون entitlement محظور؛ فعّل APNs لاحقًا بأمر `RTC_IOS_PUSH=1 npm run cap:sync` بعد الاشتراك المدفوع.
 
 ## Google OAuth
 
@@ -60,12 +61,11 @@ adb shell am start -W -a android.intent.action.VIEW \
 
 ### iOS
 
-1. سجل Bundle ID نفسه في Apple Developer.
-2. فعّل Push Notifications وBackground Modes في Signing & Capabilities.
-3. أنشئ APNs Key واربطه بمزوّد الإرسال؛ المفتاح خارج Git.
-4. اختبر على جهاز حقيقي، لأن Push لا يُختبر بالكامل على كل المحاكيات.
+**بحساب Apple ID مجاني:** اختَر Personal Team في Xcode وشغّل التطبيق على جهازك. Local Notifications وتذكيرات المحاضرات تعمل، لكن APNs وTestFlight وApp Store غير متاحة، والتوقيع المجاني يحتاج تجديدًا دوريًا. إعداد v100 الافتراضي متوافق مع هذا الوضع ولا يطلب APNs entitlement.
 
-رموز الأجهزة تُكتب عبر RPC `register_push_device` ولا يستطيع العميل قراءتها بعد التسجيل.
+**بعد عضوية Apple المدفوعة:** شغّل `RTC_IOS_PUSH=1 npm run cap:sync`، ثم سجّل Bundle ID نفسه، فعّل Push Notifications وBackground Modes، وأنشئ APNs Key واربطه بمزوّد الإرسال. لا تضع مفتاح APNs في Git.
+
+رموز Android FCM أو iOS APNs تُكتب عبر RPC `register_push_device` ولا يستطيع العميل قراءتها بعد التسجيل.
 
 ## Android release
 
@@ -87,7 +87,9 @@ Android Studio → Build → Generate Signed App Bundle. استخدم Play App S
 
 > بيئة Arena الحالية لا تحتوي JDK/Android SDK، لذلك مصدر Android جاهز لكن إنتاج AAB موقّع يتم على جهاز/CI مجهز.
 
-## iOS release
+## iOS release (يتطلب عضوية Apple مدفوعة)
+
+لا يمكن رفع App Store أو TestFlight باستخدام Personal Team المجاني. عند الاشتراك:
 
 ```bash
 npm run cap:sync

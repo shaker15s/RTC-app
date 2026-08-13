@@ -13,13 +13,14 @@
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios",
     "cap:add": "npm run cap:add:android && npm run cap:add:ios",
-    "cap:sync": "npm run build && npx cap sync && npm run cap:patch",
+    "cap:sync": "node scripts/validate-firebase.js --optional && npm run build && npx cap sync && npm run cap:patch",
     "cap:patch": "node scripts/patch-native.js",
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
     "build:android": "npm run cap:sync && cd android && ./gradlew bundleRelease",
     "build:ios": "npm run cap:sync && npx cap open ios",
-    "icons": "node generate-icons.js"
+    "icons": "node generate-icons.js",
+    "firebase:check": "node scripts/validate-firebase.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",

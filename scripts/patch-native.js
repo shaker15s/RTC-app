@@ -8,6 +8,7 @@ const SCHEME = 'org.resala.rtc.masar';
 const HOST = 'auth';
 const VERSION = '100.0.0';
 const BUILD = '10000';
+const IOS_PUSH_ENABLED = process.env.RTC_IOS_PUSH === '1';
 
 function ensure(dir) { fs.mkdirSync(dir, { recursive: true }); }
 function write(file, content) { ensure(path.dirname(file)); fs.writeFileSync(file, content); }
@@ -27,6 +28,22 @@ function patchAndroid() {
   }
   if (!xml.includes('android.permission.CAMERA')) {
     xml = xml.replace('    <uses-permission android:name="android.permission.INTERNET" />', '    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera.any" android:required="false" />\n    <uses-permission android:name="android.permission.INTERNET" />');
+  }
+  if (!xml.includes('com.google.firebase.messaging.default_notification_icon')) {
+    const firebaseMeta = `
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_rtc" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/colorAccent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="@string/default_notification_channel_id" />
+`;
+    const provider = xml.indexOf('\n        <provider');
+    if (provider < 0) throw new Error('Android provider marker not found');
+    xml = xml.slice(0, provider) + firebaseMeta + xml.slice(provider);
   }
   if (!xml.includes(`android:scheme="${SCHEME}"`)) {
     const filter = `
@@ -60,12 +77,33 @@ function patchAndroid() {
     <path android:fillColor="#FFFFFFFF" android:pathData="M12,3L1.8,8.4 12,13.8 20,9.56V16h2V8.5L12,3zM5,12.2V17c2.9,3 11.1,3 14,0v-4.8L12,16 5,12.2z" />
 </vector>\n`);
 
+  const stringsFile = path.join(base, 'res', 'values', 'strings.xml');
+  if (fs.existsSync(stringsFile)) {
+    let strings = fs.readFileSync(stringsFile, 'utf8');
+    if (!strings.includes('default_notification_channel_id')) {
+      strings = strings.replace('</resources>', '    <string name="default_notification_channel_id">rtc_updates</string>\n    <string name="notification_channel_name">تحديثات مسار RTC</string>\n</resources>');
+      fs.writeFileSync(stringsFile, strings);
+    }
+  }
+
   const gradle = path.join(ROOT, 'android', 'app', 'build.gradle');
   let g = fs.readFileSync(gradle, 'utf8');
   g = g.replace(/versionCode\s+\d+/, `versionCode ${BUILD}`)
     .replace(/versionName\s+"[^"]+"/, `versionName "${VERSION}"`)
     .replace('minifyEnabled false', 'minifyEnabled true\n            shrinkResources true');
+  if (!g.includes("firebase-bom:34.17.0")) {
+    g = g.replace(
+      "implementation fileTree(include: ['*.jar'], dir: 'libs')",
+      "implementation fileTree(include: ['*.jar'], dir: 'libs')\n\n    implementation platform('com.google.firebase:firebase-bom:34.17.0')\n    implementation 'com.google.firebase:firebase-analytics'"
+    );
+  }
   fs.writeFileSync(gradle, g);
+
+  const rootGradle = path.join(ROOT, 'android', 'build.gradle');
+  if (fs.existsSync(rootGradle)) {
+    let rootG = fs.readFileSync(rootGradle, 'utf8').replace(/com\.google\.gms:google-services:[0-9.]+/, 'com.google.gms:google-services:4.5.0');
+    fs.writeFileSync(rootGradle, rootG);
+  }
   const variables = path.join(ROOT, 'android', 'variables.gradle');
   if (fs.existsSync(variables)) {
     let vars = fs.readFileSync(variables, 'utf8').replace(/minSdkVersion\s*=\s*\d+/, 'minSdkVersion = 26');
@@ -125,9 +163,12 @@ function patchIOS() {
     }
   }
 
+  const entitlementBody = IOS_PUSH_ENABLED
+    ? '<key>aps-environment</key><string>$(APS_ENVIRONMENT)</string>'
+    : '<!-- Free Personal Team mode: local notifications only; no restricted APNs entitlement. -->';
   write(path.join(app, 'App.entitlements'), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict><key>aps-environment</key><string>$(APS_ENVIRONMENT)</string></dict></plist>\n`);
+<plist version="1.0"><dict>${entitlementBody}</dict></plist>\n`);
 
   const project = path.join(ROOT, 'ios', 'App', 'App.xcodeproj', 'project.pbxproj');
   let pbx = fs.readFileSync(project, 'utf8');
@@ -136,15 +177,17 @@ function patchIOS() {
   if (!pbx.includes('CODE_SIGN_ENTITLEMENTS = App/App.entitlements;')) {
     pbx = pbx.replace(/CODE_SIGN_STYLE = Automatic;/g, 'CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\n\t\t\t\tCODE_SIGN_STYLE = Automatic;');
   }
-  if (!pbx.includes('APS_ENVIRONMENT = ')) {
+  if (IOS_PUSH_ENABLED && !pbx.includes('APS_ENVIRONMENT = ')) {
     let configIndex = 0;
     pbx = pbx.replace(/CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/g, (line) => {
       configIndex += 1;
       return line + `\n\t\t\t\tAPS_ENVIRONMENT = ${configIndex === 1 ? 'development' : 'production'};`;
     });
+  } else if (!IOS_PUSH_ENABLED) {
+    pbx = pbx.replace(/^\s*APS_ENVIRONMENT = (development|production);\s*$/gm, '');
   }
   fs.writeFileSync(project, pbx);
-  log(true, `iOS hardened + push entitlement + PKCE deep link (${VERSION}/${BUILD})`);
+  log(true, `iOS hardened + ${IOS_PUSH_ENABLED ? 'APNs paid-team' : 'free Personal Team'} mode + PKCE (${VERSION}/${BUILD})`);
 }
 
 console.log('\n▶ Hardening native projects (Masar RTC v100)\n');
@@ -153,7 +196,8 @@ patchIOS();
 console.log(`
   Required console setup (not stored in Git):
    • Supabase redirect URL: ${SCHEME}://${HOST}
-   • Android push: android/app/google-services.json
-   • iOS push: enable the Push Notifications capability for the signing team
+   • Android FCM: android/app/google-services.json
+   • iOS mode: ${IOS_PUSH_ENABLED ? 'paid APNs capability enabled' : 'free Personal Team (local reminders, no APNs/App Store)'}
+   • To enable paid iOS APNs later: RTC_IOS_PUSH=1 npm run cap:sync
    • Signing keys/profiles stay in Play Console, Xcode or CI secret storage
 `);

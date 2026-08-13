@@ -242,13 +242,37 @@
 
   /* ─────────── Push + local course reminders ─────────── */
   var _pushBound = false;
+  async function ensureAndroidPushChannel(P) {
+    if (platform() !== 'android' || !P || !P.createChannel) return;
+    try {
+      await P.createChannel({
+        id: 'rtc_updates',
+        name: 'تحديثات مسار RTC',
+        description: 'مواعيد المحاضرات والتأجيلات والشهادات',
+        importance: 4,
+        visibility: 1,
+        sound: 'default',
+        vibration: true,
+        lights: true,
+        lightColor: '#12358f'
+      });
+    } catch (e) {}
+  }
+
+  function nativePushEnabled() {
+    var currentPlatform = platform();
+    var flags = w.RTC_CONFIG && w.RTC_CONFIG.nativePush;
+    return !flags || flags[currentPlatform] !== false;
+  }
+
   async function registerPushIfAllowed(requestPermission) {
-    if (!_native) return false;
+    if (!_native || !nativePushEnabled()) return false;
     var P = plugin('PushNotifications');
     if (!P) return false;
     var perm = await P.checkPermissions();
     if (perm.receive !== 'granted' && requestPermission) perm = await P.requestPermissions();
     if (perm.receive !== 'granted') return false;
+    await ensureAndroidPushChannel(P);
     await P.register();
     return true;
   }
@@ -280,14 +304,15 @@
 
   async function enableNotifications() {
     bindPushListeners();
-    var granted = await registerPushIfAllowed(true);
-    if (!granted) return false;
+    var pushGranted = await registerPushIfAllowed(true);
+    var localGranted = false;
     var L = plugin('LocalNotifications');
     if (L) {
       var localPerm = await L.checkPermissions();
-      if (localPerm.display !== 'granted') await L.requestPermissions();
+      if (localPerm.display !== 'granted') localPerm = await L.requestPermissions();
+      localGranted = localPerm.display === 'granted';
     }
-    return true;
+    return pushGranted || localGranted;
   }
 
   function reminderId(value) {

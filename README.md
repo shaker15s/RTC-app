@@ -54,6 +54,7 @@ npm run cap:open:ios       # يحتاج macOS + Xcode
 - App ID: `org.resala.rtc.masar`
 - OAuth callback: `org.resala.rtc.masar://auth`
 - دليل البناء والمتاجر: [`docs/STORE-AND-NATIVE.md`](docs/STORE-AND-NATIVE.md)
+- Firebase Android وiOS المجاني: [`docs/FIREBASE-AND-FREE-IOS.md`](docs/FIREBASE-AND-FREE-IOS.md)
 
 مفاتيح التوقيع و`google-services.json` وملفات Apple provisioning **لا تدخل Git**.
 

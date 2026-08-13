@@ -33,6 +33,12 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
+
+    // Firebase versions stay compatible through the official BoM.
+    // Messaging itself is provided by @capacitor/push-notifications.
+    implementation platform('com.google.firebase:firebase-bom:34.17.0')
+    implementation 'com.google.firebase:firebase-analytics'
+
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
