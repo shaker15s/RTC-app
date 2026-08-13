@@ -16,12 +16,12 @@
     officialBranchCount: 17,
     officialHours: 'يوميًا من ٢ ظهرًا إلى ٦ مساءً',
     hotline: '19450',
-    website: 'https://resala.org/resala-training-centers',
+    website: 'https://rtc-kohl.vercel.app/',
     facebook: 'https://www.facebook.com/RTCPage/',
     instagram: 'https://www.instagram.com/resala_training_center/',
     linkedin: 'https://eg.linkedin.com/company/resala-training-centers',
     sourceCheckedAt: '2026-08-13',
-    sourceNote: 'عدد الفروع وساعات الاستقبال من صفحة النشاط الرسمية؛ مواعيد كل فرع تُراجع من صفحته قبل الزيارة.'
+    sourceNote: 'موقع RTC الرسمي هو مرجع التعريف بالمركز؛ مواعيد كل فرع تُراجع من صفحة الفرع قبل الزيارة.'
   };
 
   var tracks = [

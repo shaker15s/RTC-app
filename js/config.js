@@ -7,5 +7,5 @@ window.RTC_CONFIG = {
   debugAuth: false,
   /* Android FCM is ready. iOS APNs is disabled for free Personal Team signing. */
   nativePush: { android: true, ios: false },
-  officialUrl: 'https://resala.org/resala-training-centers'
+  officialUrl: 'https://rtc-kohl.vercel.app/'
 };

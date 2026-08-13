@@ -50,6 +50,7 @@ check('URL sanitizer permits valid tel:', safeUrl('tel:19450') === 'tel:19450');
 
 console.log('\n[V100] Database privacy boundaries:');
 const migration = read('supabase/migrations/20260813190000_v100_platform.sql');
+const leaderboardRepair = read('supabase/migrations/20260814100000_repair_leaderboard_and_rtc_link.sql');
 check('direct profile SELECT is revoked', migration.includes('REVOKE SELECT ON public.profiles FROM authenticated'));
 check('safe profile columns are explicitly granted', migration.includes('GRANT SELECT (id, role, status, full_name, points'));
 check('caller-bound profile RPC exists', migration.includes('FUNCTION public.get_my_profile()'));
@@ -69,6 +70,9 @@ check('private notes enforce instructor/student relationship', migration.include
 check('excuse RPC verifies enrollment and owned upload path', migration.includes("لست مسجلًا في هذه المجموعة") && migration.includes("مسار الملف غير صالح"));
 check('broadcast input is bounded and type-whitelisted', migration.includes('length(clean_message) NOT BETWEEN 2 AND 2000') && migration.includes("clean_type NOT IN"));
 check('branch edits are admin RPCs with HTTPS validation and audit', migration.includes('FUNCTION public.update_branch_directory') && migration.includes("الروابط يجب أن تبدأ بـ https://") && migration.includes("write_audit('update_branch'"));
+check('leaderboard repair installs the no-argument RPC expected by PostgREST', leaderboardRepair.includes('DROP FUNCTION IF EXISTS public.get_leaderboard()') && leaderboardRepair.includes('CREATE FUNCTION public.get_leaderboard()') && leaderboardRepair.includes("NOTIFY pgrst, 'reload schema'"));
+check('leaderboard repair exposes only to authenticated users', leaderboardRepair.includes('REVOKE ALL ON FUNCTION public.get_leaderboard() FROM PUBLIC') && leaderboardRepair.includes('GRANT EXECUTE ON FUNCTION public.get_leaderboard() TO authenticated'));
+check('RTC portal is the configured official link', config.includes("officialUrl: 'https://rtc-kohl.vercel.app/'") && read('js/content.js').includes("website: 'https://rtc-kohl.vercel.app/'") && index.includes('href="https://rtc-kohl.vercel.app/"'));
 
 console.log('\n[V100] Native hardening:');
 const android = read('android/app/src/main/AndroidManifest.xml');
