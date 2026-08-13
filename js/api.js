@@ -25,6 +25,11 @@
   }
 
   function authRedirectUrl() {
+    /* داخل التطبيق الأصلي: نرجع الـ scheme؛ على الويب: أصل الصفحة الحالي */
+    if (w.RTCNative && typeof w.RTCNative.oauthRedirect === 'function') {
+      var u = w.RTCNative.oauthRedirect();
+      if (u) return u;
+    }
     var origin = String(w.location.origin || '').replace(/\/$/, '');
     var path = w.location.pathname || '/';
     if (!path || path === '/') return origin + '/';
@@ -237,7 +242,34 @@
       client.from('attendance').select('id, status, created_at'),
       client.from('enrollments').select('id')
     ]);
-    return {
+    /* ═══ عدّاد المقاعد (بدون أي بيانات شخصية) ═══ */
+  var _seatCache = {};
+  async function seatCounts(batchIds) {
+    var ids = (batchIds || []).filter(Boolean);
+    if (!ids.length) return {};
+    var out = {};
+    try {
+      var rows = await rpc('batch_seat_counts', { p_batch_ids: ids });
+      (rows || []).forEach(function (r) {
+        out[r.batch_id] = { enrolled: Number(r.enrolled) || 0, capacity: Number(r.capacity) || 0 };
+      });
+      _seatCache = out;
+      return out;
+    } catch (e) {
+      /* fallback: عدّ مباشر من enrollments لو الـ RPC مش منشور بعد */
+      try {
+        if (!sb()) return _seatCache || {};
+        var res = await sb().from('enrollments').select('batch_id').in('batch_id', ids).eq('status', 'active');
+        if (res.error) throw res.error;
+        var counts = {};
+        (res.data || []).forEach(function (r) { counts[r.batch_id] = (counts[r.batch_id] || 0) + 1; });
+        ids.forEach(function (id) { out[id] = { enrolled: counts[id] || 0, capacity: 0 }; });
+        return out;
+      } catch (e2) { return _seatCache || {}; }
+    }
+  }
+
+  return {
       profs: pack[0].data || [],
       courses: pack[1].data || [],
       batches: pack[2].data || [],
@@ -328,6 +360,7 @@
     rpc: rpc, invalidate: invalidate, getSession: getSession,
     signInGoogle: signInGoogle, signOut: signOut,
     recoverHashSession: recoverHashSession, authRedirectUrl: authRedirectUrl,
+    seatCounts: seatCounts,
     fetchMyProfile: fetchMyProfile, updateMyProfile: updateMyProfile,
     fetchBranches: fetchBranches, fetchCourses: fetchCourses, fetchBatches: fetchBatches,
     fetchMyEnrollments: fetchMyEnrollments, fetchMyBatches: fetchMyBatches,

@@ -1222,6 +1222,7 @@ ON CONFLICT (id) DO NOTHING;
 
 DROP POLICY IF EXISTS avatars_read ON storage.objects;
 DROP POLICY IF EXISTS avatars_write ON storage.objects;
+DROP POLICY IF EXISTS avatars_update ON storage.objects;
 DROP POLICY IF EXISTS excuses_read ON storage.objects;
 DROP POLICY IF EXISTS excuses_write ON storage.objects;
 

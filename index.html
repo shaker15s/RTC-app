@@ -9,7 +9,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://cdnjs.cloudflare.com 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https://*.googleusercontent.com https://*.supabase.co; font-src 'self' https://cdn.jsdelivr.net data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://accounts.google.com; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>مسار RTC — مركز رسالة التدريبي | 9.0</title>
+<title>مسار RTC — مركز رسالة التدريبي | 10.0</title>
 
 <!-- Fonts (fontsource CDN) -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5.2.9/300.css">
@@ -127,7 +127,7 @@ img{display:block}
   .grid-desktop>*,.grid-desktop-3>*{margin-bottom:0!important}
   .home-grid{display:grid!important;grid-template-columns:1.45fr 1fr!important;gap:22px!important;align-items:start}
   #ah-stats{grid-template-columns:repeat(4,1fr)!important}
-  .bottom-nav{left:50%!important;right:auto!important;transform:translateX(-50%);width:min(720px,94%);bottom:16px!important;border:1px solid var(--line);border-radius:24px;box-shadow:var(--sh-lg)}
+  .bottom-nav{left:50%!important;right:auto!important;transform:translateX(-50%);width:min(660px,92%);bottom:20px!important;animation:none}
   .onb-inner{max-width:640px!important}
 }
 @media(min-width:500px) and (max-width:1023px) and (min-height:820px){
@@ -317,16 +317,37 @@ html.dark #screen-onboarding{background:linear-gradient(165deg,#070a12 0%,#0d183
 .diag-row .fail{color:var(--red)}
 .g-preview{width:100%;display:flex;align-items:center;gap:12px;background:var(--card);border:1.5px solid rgba(0,85,78,.4);border-radius:18px;padding:13px 15px;box-shadow:var(--sh);text-align:right}
 
-/* ═══════════════ BOTTOM NAV ═══════════════ */
-.bottom-nav{position:absolute;bottom:0;left:0;right:0;z-index:40;background:var(--glass);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);border-top:1px solid var(--line);display:none}
+/* ═══════════════ BOTTOM NAV — FLOATING ISLAND (v10) ═══════════════ */
+.bottom-nav{
+  position:absolute;z-index:40;display:none;
+  left:12px;right:12px;
+  bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  background:var(--glass);
+  backdrop-filter:blur(26px) saturate(160%);
+  -webkit-backdrop-filter:blur(26px) saturate(160%);
+  border:1px solid var(--line);
+  border-radius:26px;
+  box-shadow:0 18px 44px -12px rgba(4,10,28,.42), 0 2px 8px rgba(4,10,28,.10), inset 0 1px 0 rgba(255,255,255,.35);
+  animation:navRise .42s cubic-bezier(.16,1,.3,1) both;
+}
+html.dark .bottom-nav{
+  border-color:rgba(255,255,255,.12);
+  box-shadow:0 20px 50px -12px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.07);
+}
+@keyframes navRise{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 .bottom-nav:not(.hidden){display:block}
-.bottom-nav .in{display:flex;padding:5px 8px}
-.nav-btn{flex:1;height:62px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--mut);transition:.2s;position:relative;border-radius:16px}
-.nav-btn i{font-size:23px;transition:transform .3s cubic-bezier(.34,1.56,.64,1),color .2s}
-.nav-btn span{font-size:9.5px;font-weight:700}
-.nav-btn.active{color:var(--primary)}
-.nav-btn.active i{transform:translateY(-2px) scale(1.08)}
-.nav-btn.active::after{content:'';position:absolute;bottom:4px;width:16px;height:4px;border-radius:99px;background:var(--primary)}
+.bottom-nav .in{display:flex;padding:6px 6px;gap:2px}
+.nav-btn{
+  flex:1;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--mut);position:relative;border-radius:20px;overflow:hidden;
+  transition:color .22s ease, background-color .28s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
+}
+.nav-btn i{font-size:22px;transition:transform .34s cubic-bezier(.34,1.56,.64,1),color .2s}
+.nav-btn span{font-size:9.5px;font-weight:700;transition:opacity .2s}
+.nav-btn.active{color:var(--primary);background:var(--primary-soft)}
+.nav-btn.active i{transform:translateY(-1px) scale(1.14)}
+html.dark .nav-btn.active{color:#89f5e7;background:rgba(137,245,231,.13)}
+.nav-btn.is-pressed{transform:scale(.93)}
 
 /* ═══════════════ CARDS & MODALS ═══════════════ */
 .row-item{display:flex;align-items:center;gap:13px;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--card);transition:.2s;cursor:pointer;color:var(--txt)}
@@ -344,13 +365,94 @@ html.dark .st-r{background:rgba(251,113,133,.14);color:#fb7185}
 .modal-sheet{width:100%;background:var(--card);border-radius:28px 28px 0 0;transform:translateY(100%);transition:transform .36s cubic-bezier(.16,1,.3,1);max-height:88dvh;overflow-y:auto;padding:10px 20px 40px;will-change:transform}
 .modal-bg.open .modal-sheet{transform:translateY(0)}
 .modal-handle{width:38px;height:4px;background:var(--line);border-radius:2px;margin:6px auto 17px}
-#toast-ct{position:absolute;top:16px;left:14px;right:14px;z-index:500;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-.toast{display:flex;align-items:center;gap:11px;background:#1d2333;color:#eff2fa;padding:13px 16px;border-radius:16px;font-size:12.5px;font-weight:600;box-shadow:0 12px 34px rgba(0,0,0,.35);border-right:4px solid var(--primary);animation:toastIn .28s cubic-bezier(.16,1,.3,1);will-change:transform,opacity}
+/* ═══════════════ SNACKBAR (v10 — bottom, above tab bar) ═══════════════ */
+#toast-ct{
+  position:absolute;left:14px;right:14px;z-index:500;
+  bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;
+  transition:bottom .3s cubic-bezier(.16,1,.3,1);
+}
+#toast-ct.above-nav{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+.toast{display:flex;align-items:center;gap:11px;background:#1d2333;color:#eff2fa;padding:13px 16px;border-radius:16px;font-size:12.5px;font-weight:600;box-shadow:0 14px 38px rgba(0,0,0,.42);border-right:4px solid var(--primary);animation:toastIn .3s cubic-bezier(.16,1,.3,1);will-change:transform,opacity}
 .toast.ok{border-right-color:#2dd4bf}.toast.ok i{color:#2dd4bf}
 .toast.err{border-right-color:#fb7185}.toast.err i{color:#fb7185}
 .toast.info{border-right-color:#7ea2ff}.toast.info i{color:#7ea2ff}
 .toast.warn{border-right-color:#fbbf24}.toast.warn i{color:#fbbf24}
-@keyframes toastIn{from{opacity:0;transform:translateY(-14px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastIn{from{opacity:0;transform:translateY(18px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* ═══════════════ MOTION LAYER (v10) ═══════════════ */
+.rtc-ripple{
+  position:absolute;border-radius:50%;pointer-events:none;transform:scale(0);
+  background:radial-gradient(circle, rgba(255,255,255,.42) 0%, rgba(255,255,255,.16) 55%, transparent 72%);
+  animation:rippleOut .58s cubic-bezier(.16,1,.3,1) forwards;z-index:0;
+}
+.c-card .rtc-ripple,.chip .rtc-ripple,.icon-btn .rtc-ripple,.roster-chk .rtc-ripple,.row-item .rtc-ripple,.pick-c .rtc-ripple,.btn-soft .rtc-ripple{
+  background:radial-gradient(circle, rgba(0,40,142,.20) 0%, rgba(0,40,142,.08) 55%, transparent 72%);
+}
+html.dark .c-card .rtc-ripple,html.dark .chip .rtc-ripple,html.dark .icon-btn .rtc-ripple,html.dark .roster-chk .rtc-ripple,html.dark .row-item .rtc-ripple,html.dark .pick-c .rtc-ripple,html.dark .btn-soft .rtc-ripple{
+  background:radial-gradient(circle, rgba(137,245,231,.24) 0%, rgba(137,245,231,.09) 55%, transparent 72%);
+}
+@keyframes rippleOut{to{transform:scale(1);opacity:0}}
+
+.btn.is-pressed,.icon-btn.is-pressed,.chip.is-pressed,.roster-chk.is-pressed{transform:scale(.94)}
+.c-card.is-pressed,.row-item.is-pressed,.pick-c.is-pressed,.feat-item.is-pressed{transform:scale(.985)}
+
+.btn.is-busy{pointer-events:none;filter:saturate(.9)}
+.btn.is-ok{background:linear-gradient(135deg,var(--teal-2),var(--teal))!important;border-bottom-color:#00211d!important;color:#fff!important;animation:okPop .38s cubic-bezier(.34,1.56,.64,1)}
+@keyframes okPop{0%{transform:scale(.94)}55%{transform:scale(1.045)}100%{transform:scale(1)}}
+.btn.is-err{animation:errShake .42s cubic-bezier(.36,.07,.19,.97)}
+@keyframes errShake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-7px)}40%,60%{transform:translateX(7px)}}
+
+.fly-out{
+  pointer-events:none;overflow:hidden;
+  transition:transform .42s cubic-bezier(.36,0,.66,-.28), opacity .34s ease,
+             height .34s cubic-bezier(.16,1,.3,1) .24s, margin .34s ease .24s, padding .34s ease .24s;
+  transform:translateX(-24%) translateY(-16%) scale(.82) rotate(-4deg);opacity:0;
+}
+html[dir="rtl"] .fly-out{transform:translateX(24%) translateY(-16%) scale(.82) rotate(4deg)}
+
+.stagger-in{animation:staggerIn .46s cubic-bezier(.16,1,.3,1) both}
+@keyframes staggerIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+
+#hint-ct{position:absolute;left:14px;right:14px;bottom:calc(92px + env(safe-area-inset-bottom,0px));z-index:420;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.rtc-hint{
+  display:flex;align-items:center;gap:10px;pointer-events:auto;
+  background:linear-gradient(135deg,var(--primary),var(--primary-2));color:#fff;
+  padding:12px 14px;border-radius:18px;font-size:12px;font-weight:700;line-height:1.6;
+  box-shadow:0 16px 40px -10px rgba(0,40,142,.6);
+  opacity:0;transform:translateY(14px) scale(.96);
+  transition:opacity .3s ease, transform .34s cubic-bezier(.16,1,.3,1);
+}
+.rtc-hint.show{opacity:1;transform:none}
+.rtc-hint>i{font-size:19px;flex-shrink:0;color:#ffd76a}
+.rtc-hint>span{flex:1}
+.rtc-hint-x{width:26px;height:26px;min-width:26px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+
+.ptr-ind{
+  position:absolute;top:2px;left:50%;margin-left:-17px;width:34px;height:34px;border-radius:50%;
+  background:var(--card);border:1px solid var(--line);box-shadow:var(--sh);
+  display:flex;align-items:center;justify-content:center;color:var(--primary);font-size:17px;
+  opacity:0;pointer-events:none;z-index:15;
+}
+.ptr-ind.ready{color:var(--teal);border-color:var(--teal)}
+.ptr-ind.spinning i{animation:spin .8s linear infinite}
+
+.net-banner{
+  position:absolute;top:0;left:0;right:0;z-index:480;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:calc(7px + env(safe-area-inset-top,0px)) 12px 7px;
+  background:#7c2d12;color:#fff;font-size:11.5px;font-weight:700;
+  transform:translateY(-100%);transition:transform .34s cubic-bezier(.16,1,.3,1);
+}
+.net-banner.show{transform:none}
+.net-banner i{font-size:15px}
+
+.seat-meter{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:var(--mut);margin-top:6px}
+.seat-track{flex:1;height:5px;border-radius:99px;background:var(--line);overflow:hidden;max-width:120px}
+.seat-fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--teal),var(--primary));transition:width .8s cubic-bezier(.16,1,.3,1)}
+.seat-fill.warn{background:linear-gradient(90deg,#f59e0b,#b45309)}
+.seat-fill.full{background:linear-gradient(90deg,#fb7185,#be123c)}
+.seat-num{font-variant-numeric:tabular-nums;letter-spacing:.3px}
 .faq-item{transition:.2s}
 .faq-a{max-height:0;overflow:hidden;transition:max-height .35s ease,margin-top .35s ease;color:var(--mut)}
 .faq-item.open .faq-a{max-height:220px;margin-top:8px}
@@ -383,6 +485,10 @@ html.dark .st-r{background:rgba(251,113,133,.14);color:#fb7185}
   .screen.active{animation:none!important}
   .modal-sheet{transition:none!important}
   .toast{animation:none!important}
+  .rtc-ripple{display:none!important}
+  .bottom-nav{animation:none!important}
+  .stagger-in{animation:none!important}
+  .fly-out{transition:opacity .12s linear!important;transform:none!important}
 }
 </style>
 </head>
@@ -483,7 +589,7 @@ html.dark .st-r{background:rgba(251,113,133,.14);color:#fb7185}
               <input type="hidden" id="onb-address" value="">
             </div>
           </div>
-          <button onclick="submitProfile()" class="btn btn-primary btn-big w-full max-w-xs mx-auto mt-6 shadow-lg"><span id="btn-step2-label">حفظ وبدء الاستخدام</span><i class="ph-bold ph-check"></i></button>
+          <button data-act="submitProfile" data-busy-label="جارٍ الحفظ" class="btn btn-primary btn-big w-full max-w-xs mx-auto mt-6 shadow-lg"><span id="btn-step2-label">حفظ وبدء الاستخدام</span><i class="ph-bold ph-check"></i></button>
         </div>
       </div>
     </div>
@@ -797,7 +903,7 @@ html.dark .st-r{background:rgba(251,113,133,.14);color:#fb7185}
           </div>
           <input type="hidden" id="ep-branch" value="">
         </div>
-        <button class="btn btn-primary btn-big w-full mt-3" onclick="saveEditProfile()"><i class="ph ph-floppy-disk"></i> حفظ التعديلات</button>
+        <button class="btn btn-primary btn-big w-full mt-3" data-act="saveEditProfile" data-busy-label="جاري الحفظ"><i class="ph ph-floppy-disk"></i> حفظ التعديلات</button>
         <div class="h-20"></div>
       </div>
     </div>
@@ -1041,47 +1147,51 @@ html.dark .st-r{background:rgba(251,113,133,.14);color:#fb7185}
     <div class="scr-body tab-pad" id="bc-box"></div>
   </div>
 
-  <!-- BOTTOM NAVIGATION BARS -->
+  <!-- BOTTOM NAVIGATION BARS — floating island (v10) -->
   <div id="nav-student" class="bottom-nav hidden">
     <div class="in">
-      <button class="nav-btn active" data-screen="s-home" onclick="switchTab('s-home')"><i class="ph ph-house"></i><span>الرئيسية</span></button>
-      <button class="nav-btn" data-screen="s-courses" onclick="switchTab('s-courses')"><i class="ph ph-book-bookmark"></i><span>كورساتي</span></button>
-      <button class="nav-btn" data-screen="s-points" onclick="switchTab('s-points')"><i class="ph ph-star"></i><span>النقاط</span></button>
-      <button class="nav-btn" data-screen="s-certs" onclick="switchTab('s-certs')"><i class="ph ph-certificate"></i><span>شهاداتي</span></button>
-      <button class="nav-btn" data-screen="s-profile" onclick="switchTab('s-profile')"><i class="ph ph-user"></i><span>حسابي</span></button>
+      <button class="nav-btn active" data-screen="s-home" data-icon="ph-house" data-act="switchTab" data-arg1="s-home"><i class="ph-fill ph-house"></i><span>الرئيسية</span></button>
+      <button class="nav-btn" data-screen="s-courses" data-icon="ph-book-bookmark" data-act="switchTab" data-arg1="s-courses"><i class="ph ph-book-bookmark"></i><span>كورساتي</span></button>
+      <button class="nav-btn" data-screen="s-points" data-icon="ph-star" data-act="switchTab" data-arg1="s-points"><i class="ph ph-star"></i><span>النقاط</span></button>
+      <button class="nav-btn" data-screen="s-certs" data-icon="ph-certificate" data-act="switchTab" data-arg1="s-certs"><i class="ph ph-certificate"></i><span>شهاداتي</span></button>
+      <button class="nav-btn" data-screen="s-profile" data-icon="ph-user" data-act="switchTab" data-arg1="s-profile"><i class="ph ph-user"></i><span>حسابي</span></button>
     </div>
   </div>
 
   <div id="nav-volunteer" class="bottom-nav hidden">
     <div class="in">
-      <button class="nav-btn active" data-screen="v-home" onclick="switchTab('v-home')"><i class="ph ph-house"></i><span>الرئيسية</span></button>
-      <button class="nav-btn" data-screen="v-batches" onclick="switchTab('v-batches')"><i class="ph ph-users-three"></i><span>المجموعات</span></button>
-      <button class="nav-btn" data-screen="v-courses" onclick="switchTab('v-courses')"><i class="ph ph-book-open"></i><span>الكورسات</span></button>
-      <button class="nav-btn" data-screen="s-analytics" onclick="switchTab('s-analytics')"><i class="ph ph-chart-line-up"></i><span>التحليلات</span></button>
-      <button class="nav-btn" data-screen="v-profile" onclick="switchTab('v-profile')"><i class="ph ph-user"></i><span>حسابي</span></button>
+      <button class="nav-btn active" data-screen="v-home" data-icon="ph-house" data-act="switchTab" data-arg1="v-home"><i class="ph-fill ph-house"></i><span>الرئيسية</span></button>
+      <button class="nav-btn" data-screen="v-batches" data-icon="ph-users-three" data-act="switchTab" data-arg1="v-batches"><i class="ph ph-users-three"></i><span>المجموعات</span></button>
+      <button class="nav-btn" data-screen="v-courses" data-icon="ph-book-open" data-act="switchTab" data-arg1="v-courses"><i class="ph ph-book-open"></i><span>الكورسات</span></button>
+      <button class="nav-btn" data-screen="s-analytics" data-icon="ph-chart-line-up" data-act="switchTab" data-arg1="s-analytics"><i class="ph ph-chart-line-up"></i><span>التحليلات</span></button>
+      <button class="nav-btn" data-screen="v-profile" data-icon="ph-user" data-act="switchTab" data-arg1="v-profile"><i class="ph ph-user"></i><span>حسابي</span></button>
     </div>
   </div>
 
   <div id="nav-admin" class="bottom-nav hidden">
     <div class="in">
-      <button class="nav-btn active" data-screen="a-home" onclick="switchTab('a-home')"><i class="ph ph-house"></i><span>الرئيسية</span></button>
-      <button class="nav-btn" data-screen="a-users" onclick="switchTab('a-users')"><i class="ph ph-users"></i><span>المستخدمين</span></button>
-      <button class="nav-btn" data-screen="a-courses" onclick="switchTab('a-courses')"><i class="ph ph-book-open"></i><span>الكورسات</span></button>
-      <button class="nav-btn" data-screen="s-analytics" onclick="switchTab('s-analytics')"><i class="ph ph-chart-line-up"></i><span>التحليلات</span></button>
+      <button class="nav-btn active" data-screen="a-home" data-icon="ph-house" data-act="switchTab" data-arg1="a-home"><i class="ph-fill ph-house"></i><span>الرئيسية</span></button>
+      <button class="nav-btn" data-screen="a-users" data-icon="ph-users" data-act="switchTab" data-arg1="a-users"><i class="ph ph-users"></i><span>المستخدمين</span></button>
+      <button class="nav-btn" data-screen="a-courses" data-icon="ph-book-open" data-act="switchTab" data-arg1="a-courses"><i class="ph ph-book-open"></i><span>الكورسات</span></button>
+      <button class="nav-btn" data-screen="s-analytics" data-icon="ph-chart-line-up" data-act="switchTab" data-arg1="s-analytics"><i class="ph ph-chart-line-up"></i><span>التحليلات</span></button>
     </div>
+  </div>
+
   </div>
 
 </div>
 
 <!-- Scripts -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.js"></script>
-<script src="js/config.js?v=9.0.2"></script>
-<script src="js/supabaseClient.js?v=9.0.2"></script>
-<script src="js/security.js?v=9.0.2"></script>
-<script src="js/i18n.js?v=9.0.2"></script>
-<script src="js/ui.js?v=9.0.2"></script>
-<script src="js/api.js?v=9.0.2"></script>
-<script src="app.js?v=9.0.2"></script>
+<script src="js/config.js?v=10.0.0"></script>
+<script src="js/supabaseClient.js?v=10.0.0"></script>
+<script src="js/native.js?v=10.0.0"></script>
+<script src="js/motion.js?v=10.0.0"></script>
+<script src="js/security.js?v=10.0.0"></script>
+<script src="js/i18n.js?v=10.0.0"></script>
+<script src="js/ui.js?v=10.0.0"></script>
+<script src="js/api.js?v=10.0.0"></script>
+<script src="app.js?v=10.0.0"></script>
 <script>
 // Ambient Background Particle Canvas
 (function initAmbientCanvas() {

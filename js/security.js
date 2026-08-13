@@ -48,9 +48,10 @@
   }
 
   function haptic(ms) {
+    /* الجسر الأصلي أولاً (v10)، وإلا اهتزاز الويب */
     try {
-      if (w.Capacitor && w.Capacitor.Plugins && w.Capacitor.Plugins.Haptics) {
-        w.Capacitor.Plugins.Haptics.impact({ style: 'LIGHT' });
+      if (w.RTCNative && typeof w.RTCNative.haptic === 'function') {
+        w.RTCNative.haptic((ms || 12) >= 28 ? 'medium' : 'light');
         return;
       }
     } catch (e) {}

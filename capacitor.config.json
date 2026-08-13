@@ -1,12 +1,12 @@
 {
   "appId": "org.resala.rtc.masar",
   "appName": "مسار RTC",
-  "webDir": ".",
+  "webDir": "dist",
   "bundledWebRuntime": false,
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 2000,
-      "launchAutoHide": true,
+      "launchShowDuration": 3000,
+      "launchAutoHide": false,
       "backgroundColor": "#f7f9fb",
       "androidSplashResourceName": "splash",
       "showSpinner": false
@@ -32,5 +32,18 @@
   "ios": {
     "contentInset": "automatic",
     "allowsLinkPreview": false
+  },
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https",
+    "allowNavigation": [
+      "jwhedqmszbdougsqqmhv.supabase.co",
+      "*.supabase.co",
+      "accounts.google.com",
+      "*.google.com",
+      "*.googleusercontent.com",
+      "shaker15s.github.io",
+      "*.github.io"
+    ]
   }
 }
