@@ -33,7 +33,7 @@ npm run build:android
 
 `google-services.json` is intentionally ignored by Git. Firebase Admin service-account JSON must never be added to the mobile app.
 
-For GitHub Actions, store the Base64 content as a repository secret named `GOOGLE_SERVICES_JSON_B64`. The manual **Native build verification** workflow restores it only inside the runner and uploads a debug APK artifact.
+For GitHub Actions, paste the complete JSON content into a repository Actions secret named `GOOGLE_SERVICES_JSON`. The manual **Native build verification** workflow restores it only inside the runner and uploads a debug APK artifact.
 
 ## iOS without a paid Apple Developer membership
 
