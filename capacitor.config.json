@@ -24,7 +24,7 @@
       "style": "DARK"
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]
     },
     "LocalNotifications": {
       "smallIcon": "ic_stat_rtc",

@@ -84,6 +84,8 @@ check('QR scanner raises Android minimum SDK deliberately', read('android/variab
 check('iOS ATS blocks arbitrary loads', plist.includes('<key>NSAllowsArbitraryLoads</key><false/>'));
 check('iOS OAuth scheme exists', plist.includes('<string>org.resala.rtc.masar</string>'));
 check('iOS push background mode exists', plist.includes('<string>remote-notification</string>'));
+const appDelegate = read('ios/App/App/AppDelegate.swift');
+check('iOS forwards APNs success and failure to Capacitor', appDelegate.includes('capacitorDidRegisterForRemoteNotifications') && appDelegate.includes('capacitorDidFailToRegisterForRemoteNotifications'));
 check('iOS camera permission explains QR-only purpose', plist.includes('<key>NSCameraUsageDescription</key>') && plist.includes('مسح رمز QR'));
 
 console.log('\n[V100] Offline privacy:');

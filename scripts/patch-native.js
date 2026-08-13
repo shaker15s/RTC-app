@@ -102,6 +102,29 @@ function patchIOS() {
   }
   fs.writeFileSync(plist, xml);
 
+  const appDelegate = path.join(app, 'AppDelegate.swift');
+  if (fs.existsSync(appDelegate)) {
+    let swift = fs.readFileSync(appDelegate, 'utf8');
+    if (!swift.includes('capacitorDidRegisterForRemoteNotifications')) {
+      const methods = `
+    // Forward APNs registration results to Capacitor Push Notifications.
+    func application(_ application: UIApplication,
+                     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
+    }
+
+    func application(_ application: UIApplication,
+                     didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+    }
+`;
+      const close = swift.lastIndexOf('\n}');
+      if (close < 0) throw new Error('AppDelegate closing brace not found');
+      swift = swift.slice(0, close) + methods + swift.slice(close);
+      fs.writeFileSync(appDelegate, swift);
+    }
+  }
+
   write(path.join(app, 'App.entitlements'), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>aps-environment</key><string>$(APS_ENVIRONMENT)</string></dict></plist>\n`);
