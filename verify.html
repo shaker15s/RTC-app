@@ -2,56 +2,28 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta name="theme-color" content="#00288e">
+<meta name="theme-color" content="#12358f">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src https://*.supabase.co; object-src 'none'; base-uri 'self'; form-action 'none'">
 <title>التحقق من شهادة — مسار RTC</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/ibm-plex-sans-arabic@5.2.9/500.css">
-<style>
-  :root{--primary:#00288e;--teal:#00554e;--bg:#f4f7fc;--card:#fff;--txt:#14161c;--mut:#667085;--line:#e3e7f0}
-  *{box-sizing:border-box} body{margin:0;font-family:'IBM Plex Sans Arabic',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px}
-  .card{width:100%;max-width:440px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 16px 40px rgba(20,30,70,.08)}
-  h1{margin:0 0 8px;font-size:22px} p{color:var(--mut);font-size:13px;line-height:1.7}
-  input{width:100%;height:52px;border:1.5px solid var(--line);border-radius:14px;padding:0 14px;font:inherit;margin:16px 0}
-  button{width:100%;height:50px;border:0;border-radius:14px;background:linear-gradient(135deg,#00288e,#1e40af);color:#fff;font:inherit;font-weight:700;cursor:pointer}
-  .ok{background:#ecfdf5;border:1px solid #99f6e4;border-radius:14px;padding:14px;margin-top:14px;color:#115e59}
-  .bad{background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:14px;margin-top:14px;color:#991b1b}
-  a{color:var(--primary);font-weight:700;text-decoration:none}
-</style>
+<link rel="stylesheet" href="assets/static/legal.css?v=100.0.0">
 </head>
 <body>
-  <div class="card">
-    <h1>التحقق من شهادة رسالة</h1>
-    <p>أدخل الرقم التسلسلي المكتوب على الشهادة. لا يُطلب منك تسجيل دخول، ولا نعرض هاتفاً أو بريداً.</p>
-    <input id="serial" dir="ltr" placeholder="RTC-XXXXXXXXXX" style="text-align:left">
-    <button id="go">تحقق الآن</button>
-    <div id="out"></div>
-    <p style="margin-top:18px"><a href="./">العودة للتطبيق</a></p>
+  <div class="verify-shell">
+    <main class="verify-card" aria-labelledby="verify-title">
+      <div class="verify-mark" aria-hidden="true">✓</div>
+      <h1 id="verify-title">تحقّق من شهادة RTC</h1>
+      <p class="lead">أدخل الرقم المكتوب على الشهادة. الخدمة لا تحتاج تسجيل دخول وتعرض اسمًا مقنّعًا فقط.</p>
+      <label for="serial" class="muted">الرقم التسلسلي</label>
+      <input class="field ltr" id="serial" maxlength="80" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="RTC-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX">
+      <button class="primary-button" id="go" type="button">تحقق الآن</button>
+      <div id="out" aria-live="polite"></div>
+      <p class="verify-footer"><a href="./">العودة إلى التطبيق</a> · <a href="privacy.html">الخصوصية</a></p>
+    </main>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8/dist/umd/supabase.js"></script>
-  <script src="js/config.js?v=9.0.0"></script>
-  <script>
-    const client = window.supabase.createClient(RTC_CONFIG.supabaseUrl, RTC_CONFIG.supabaseAnonKey);
-    const q = new URLSearchParams(location.search).get('s');
-    if (q) document.getElementById('serial').value = q;
-    async function run() {
-      const code = document.getElementById('serial').value.trim();
-      const out = document.getElementById('out');
-      if (!code) { out.innerHTML = '<div class="bad">أدخل الرقم التسلسلي</div>'; return; }
-      out.textContent = 'جارٍ التحقق...';
-      const { data, error } = await client.rpc('verify_certificate', { p_serial: code });
-      if (error) { out.innerHTML = '<div class="bad">تعذر الاتصال بخدمة التحقق</div>'; return; }
-      if (data && data.length && data[0].is_valid) {
-        const v = data[0];
-        const d = new Date(v.issued_date).toLocaleDateString('ar-EG');
-        out.innerHTML = '<div class="ok"><b>شهادة موثقة ✓</b><br>الاسم: ' + escapeHtml(v.student_name) + '<br>الدورة: ' + escapeHtml(v.course_title) + '<br>تاريخ الإصدار: ' + d + '</div>';
-      } else {
-        out.innerHTML = '<div class="bad">هذا الرقم غير مسجّل في سجلات مركز رسالة.</div>';
-      }
-    }
-    function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-    document.getElementById('go').onclick = run;
-    if (q) run();
-  </script>
+  <script src="assets/vendor/supabase.js?v=100.0.0"></script>
+  <script src="js/config.js?v=100.0.0"></script>
+  <script src="js/verify.js?v=100.0.0"></script>
 </body>
 </html>

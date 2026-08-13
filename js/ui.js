@@ -12,6 +12,7 @@
     if (!ct) return;
     var el = document.createElement('div');
     el.className = 'toast ' + type;
+    el.setAttribute('role', type === 'err' ? 'alert' : 'status');
     var ic = icon || (type === 'ok' ? 'ph-check-circle' : type === 'err' ? 'ph-x-circle' : type === 'warn' ? 'ph-warning' : 'ph-info');
     el.innerHTML = '<i class="ph-fill ' + esc(ic) + '"></i><span>' + esc(msg) + '</span>';
     ct.appendChild(el);
@@ -21,6 +22,39 @@
       el.style.transform = 'translateY(-10px)';
       setTimeout(function () { el.remove(); }, 350);
     }, 3400);
+  }
+
+  function activateDialog(bg, close, label) {
+    var sheet = bg.querySelector('.modal-sheet');
+    var previous = document.activeElement;
+    if (sheet) {
+      sheet.setAttribute('role', 'dialog');
+      sheet.setAttribute('aria-modal', 'true');
+      if (label) sheet.setAttribute('aria-label', label);
+      sheet.setAttribute('tabindex', '-1');
+    }
+    function focusables() {
+      return Array.prototype.slice.call(bg.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+        .filter(function (el) { return !el.disabled && !el.classList.contains('hidden'); });
+    }
+    function keydown(event) {
+      if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+      if (event.key !== 'Tab') return;
+      var items = focusables();
+      if (!items.length) { event.preventDefault(); if (sheet) sheet.focus(); return; }
+      var first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
+    bg.addEventListener('keydown', keydown);
+    requestAnimationFrame(function () {
+      var items = focusables();
+      if (items[0]) items[0].focus(); else if (sheet) sheet.focus();
+    });
+    return function restoreFocus() {
+      bg.removeEventListener('keydown', keydown);
+      if (previous && document.body.contains(previous) && previous.focus) previous.focus();
+    };
   }
 
   function showConfirm(title, msg, onYes, opts) {
@@ -42,7 +76,13 @@
         '</div></div>';
     document.getElementById('app').appendChild(bg);
     requestAnimationFrame(function () { bg.classList.add('open'); });
-    var close = function () { bg.classList.remove('open'); setTimeout(function () { bg.remove(); }, 280); };
+    var restore = function () {};
+    var close = function () {
+      bg.classList.remove('open');
+      restore();
+      setTimeout(function () { bg.remove(); }, 280);
+    };
+    restore = activateDialog(bg, close, title);
     bg.querySelector('#dc-cancel').onclick = close;
     bg.querySelector('#dc-yes').onclick = function () { close(); haptic(18); if (onYes) onYes(); };
     bg.onclick = function (e) { if (e.target === bg) close(); };
@@ -58,7 +98,14 @@
     bg.innerHTML = html;
     document.getElementById('app').appendChild(bg);
     requestAnimationFrame(function () { bg.classList.add('open'); });
-    var close = function () { bg.classList.remove('open'); setTimeout(function () { bg.remove(); }, 280); };
+    var restore = function () {};
+    var close = function () {
+      bg.classList.remove('open');
+      restore();
+      setTimeout(function () { bg.remove(); }, 280);
+    };
+    var heading = bg.querySelector('h1, h2, h3');
+    restore = activateDialog(bg, close, heading ? heading.textContent : 'نافذة');
     bg.querySelectorAll('[data-close]').forEach(function (b) { b.onclick = close; });
     bg.onclick = function (e) { if (e.target === bg) close(); };
     return { bg: bg, close: close };

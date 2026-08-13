@@ -1,144 +1,118 @@
-# مسار RTC — البناء الأصلي والنشر على المتاجر (v10)
+# مسار RTC v100 — Android وiPhone والمتاجر
 
-الويب والموبايل بيشتغلوا من **نفس الكود**. Capacitor بيغلّف مجلد `dist/` في تطبيق أصلي.
+الويب وPWA وتطبيقا Android/iOS يستخدمون نفس `dist/` ونفس Supabase. مشاريع المنصات موجودة ومتعقبة في Git؛ مخرجات البناء وملفات التوقيع فقط متجاهلة.
 
-- التطبيق على الويب: `https://shaker15s.github.io/RTC-app/`
-- معرّف التطبيق: `org.resala.rtc.masar`
-- رابط الدخول العميق: `org.resala.rtc.masar://auth`
+## المتطلبات
 
----
-
-## ١) المتطلبات
-
-| الأداة | الإصدار |
+| الهدف | المتطلبات |
 |---|---|
-| Node.js | 20 أو أحدث |
-| Java JDK | 21 (لأندرويد) |
-| Android Studio | Ladybug أو أحدث |
-| Xcode | 16 أو أحدث (لـ iOS، على macOS فقط) |
-| CocoaPods | `sudo gem install cocoapods` |
+| Web/PWA | Node.js 20+ |
+| Android | JDK 21، Android Studio حديث، Android SDK |
+| iOS محلي | macOS، Xcode 16+، Apple ID مجاني (Personal Team) |
+| iOS Store/APNs | عضوية Apple Developer Program مدفوعة |
 
 ```bash
 npm install
-```
-
----
-
-## ٢) البناء (الويب)
-
-```bash
-npm run build       # ينسخ الملفات المطلوبة إلى dist/
-npm run serve:dist  # يشغّل dist/ محلياً للتجربة
-```
-
-`scripts/build.js` بينسخ: `index.html`, `app.js`, `sw.js`, `manifest.json`,
-`verify.html`, `privacy.html`, `terms.html`, الشعار، الأيقونات (192/512 + maskable + apple-touch)،
-ومجلدات `js/` و`icons/` و`assets/` لو موجودة، وبيضيف `.nojekyll` و`build-info.json`.
-
-> `dist/` متجاهَل في Git — مبيتعملوش commit.
-
----
-
-## ٣) الأيقونات
-
-```bash
-npm install sharp --no-save
-node generate-icons.js
-```
-
-المصدر هو `rtc_app_logo.png` (١٠٢٤×١٠٢٤) — **مش حرف "R"**. بيتولّد:
-
-- `icon-192.png` / `icon-512.png` — شفافة (purpose `any`)
-- `icon-maskable-192.png` / `icon-maskable-512.png` — خلفية `#00288e` مع منطقة آمنة ٧٨٪
-- `apple-touch-icon.png` — خلفية معتمة (iOS مبيقبلش شفافية)
-- `store-assets/play-icon-512.png` — أيقونة Google Play
-- `store-assets/appstore-icon-1024.png` — أيقونة App Store
-- لو مجلد `android/` أو `ios/` موجود، بيتحدّثوا كمان (mipmap + AppIcon.appiconset)
-
-شغّل السكربت **بعد** `npx cap add` عشان أيقونات المنصّات تتولّد.
-
----
-
-## ٤) إضافة المنصّات
-
-```bash
 npm run build
-npx cap add android
-npx cap add ios          # macOS فقط
-npm run cap:patch        # يضيف الـ deep links
-node generate-icons.js   # يملأ أيقونات المنصّتين
-npx cap sync
+npm test
+npm run audit
 ```
 
-`scripts/patch-native.js` idempotent — بيضيف:
-
-- **أندرويد:** `intent-filter` لـ `org.resala.rtc.masar://auth` في `AndroidManifest.xml`
-- **iOS:** `CFBundleURLTypes` في `Info.plist`
-
-بعد أي تعديل على الويب:
+## مزامنة المنصات
 
 ```bash
-npm run cap:sync    # build + npx cap sync
+npm run cap:sync       # build → cap sync → native hardening
+npm run icons          # عند تغيير الشعار
 ```
 
----
+`cap:patch` يطبّق تلقائيًا وبشكل idempotent:
 
-## ٥) تشغيل وتجربة
+- PKCE callback `org.resala.rtc.masar://auth` للمنصتين.
+- منع HTTP الواضح ونسخ Android الاحتياطية.
+- Network Security Config يعتمد شهادات النظام فقط.
+- Release R8/shrinkResources ونسخة `100.0.0 (10000)`، وAndroid minSdk 26 لدعم ماسح QR.
+- iOS ATS ووصف إذن الكاميرا وإصدار Xcode. الوضع الافتراضي يدعم Personal Team بدون entitlement محظور؛ فعّل APNs لاحقًا بأمر `RTC_IOS_PUSH=1 npm run cap:sync` بعد الاشتراك المدفوع.
+
+## Google OAuth
+
+في Supabase Redirect URLs:
+
+```text
+org.resala.rtc.masar://auth
+```
+
+التطبيق يفتح OAuth في متصفح النظام بـ Authorization Code + PKCE. اختبر الرجوع على Android:
 
 ```bash
-npx cap open android    # ثم Run من Android Studio
-npx cap open ios        # ثم Run من Xcode
+adb shell am start -W -a android.intent.action.VIEW \
+  -d "org.resala.rtc.masar://auth?code=test" org.resala.rtc.masar
 ```
 
-اختبر الدخول العميق:
+الكود الوهمي سيفشل التبادل، لكن يجب أن يفتح التطبيق نفسه.
+
+## Push Notifications
+
+### Android
+
+1. أنشئ تطبيق Android في Firebase بنفس App ID: `org.resala.rtc.masar`.
+2. نزّل `google-services.json` إلى `android/app/` محليًا/CI؛ لا ترفعه إلى Git.
+3. اربط FCM بخدمة الإرسال الموثوقة أو Supabase Edge Function.
+4. اختبر منح الإذن على Android 13+، استقبال foreground/background، والضغط على التنبيه.
+
+### iOS
+
+**بحساب Apple ID مجاني:** اختَر Personal Team في Xcode وشغّل التطبيق على جهازك. Local Notifications وتذكيرات المحاضرات تعمل، لكن APNs وTestFlight وApp Store غير متاحة، والتوقيع المجاني يحتاج تجديدًا دوريًا. إعداد v100 الافتراضي متوافق مع هذا الوضع ولا يطلب APNs entitlement.
+
+**بعد عضوية Apple المدفوعة:** شغّل `RTC_IOS_PUSH=1 npm run cap:sync`، ثم سجّل Bundle ID نفسه، فعّل Push Notifications وBackground Modes، وأنشئ APNs Key واربطه بمزوّد الإرسال. لا تضع مفتاح APNs في Git.
+
+رموز Android FCM أو iOS APNs تُكتب عبر RPC `register_push_device` ولا يستطيع العميل قراءتها بعد التسجيل.
+
+## Android release
 
 ```bash
-adb shell am start -W -a android.intent.action.VIEW -d "org.resala.rtc.masar://auth" org.resala.rtc.masar
+npm run cap:sync
+npm run cap:open:android
 ```
 
----
+Android Studio → Build → Generate Signed App Bundle. استخدم Play App Signing وخزّن upload key في Secret Manager. لا تضع مسار المفتاح أو كلمة مروره في `build.gradle`.
 
-## ٦) إصدار Google Play
+قائمة Play Console:
 
-1. Android Studio → **Build** → **Generate Signed App Bundle** → `.aab`
-2. مفتاح التوقيع: احفظه في مكان آمن — لو ضاع مش هتقدر تحدّث التطبيق.
-3. في `android/app/build.gradle` ارفع `versionCode` و`versionName` مع كل إصدار.
-4. Play Console → Create app → ارفع الـ `.aab` على Internal testing الأول.
+- Internal testing قبل Production.
+- Data Safety: الاسم، البريد، الهاتف، الصورة، نشاط التطبيق/الحضور، Device ID الخاص بالإشعار.
+- Encryption in transit: نعم. Data deletion: عبر إدارة RTC.
+- Privacy URL: `https://shaker15s.github.io/RTC-app/privacy.html`.
+- Feature graphic: `store-assets/play-feature-1024x500.png`، Icon: `store-assets/play-icon-512.png`، ولقطتا هاتف على الأقل.
+- اختبر RTL، الوضع الداكن، Offline banner، Back button وDeep Link.
 
-**الأصول المطلوبة:**
+> بيئة Arena الحالية لا تحتوي JDK/Android SDK، لذلك مصدر Android جاهز لكن إنتاج AAB موقّع يتم على جهاز/CI مجهز.
 
-| العنصر | المقاس |
-|---|---|
-| أيقونة | 512×512 (`store-assets/play-icon-512.png`) |
-| صورة الغلاف | 1024×500 |
-| لقطات الهاتف | ٢ على الأقل، ١٦:٩ أو ٩:١٦ |
-| وصف قصير | ٨٠ حرف |
-| وصف كامل | ٤٠٠٠ حرف |
-| سياسة الخصوصية | `https://shaker15s.github.io/RTC-app/privacy.html` |
+## iOS release (يتطلب عضوية Apple مدفوعة)
 
-في **Data safety** صرّح بـ: الاسم، البريد، صورة الحساب، بيانات الحضور — كلها مستخدمة لتشغيل الخدمة، مشفّرة في النقل، والمستخدم يقدر يطلب الحذف.
+لا يمكن رفع App Store أو TestFlight باستخدام Personal Team المجاني. عند الاشتراك:
 
----
+```bash
+npm run cap:sync
+npm run cap:open:ios
+```
 
-## ٧) إصدار App Store
+في Xcode:
 
-1. Xcode → **Product** → **Archive** → Distribute App → App Store Connect
-2. Bundle ID: `org.resala.rtc.masar` (سجّله في Apple Developer أولاً)
-3. الأيقونة: `store-assets/appstore-icon-1024.png` (بدون شفافية وبدون زوايا مدوّرة)
-4. لقطات: iPhone 6.7" و6.5" — ٣ على الأقل
-5. **App Privacy**: نفس بنود Play.
-6. Sign in with Google شغّال؛ لو ضفت أي تسجيل دخول اجتماعي تاني، Apple بتطلب **Sign in with Apple** كمان.
+1. اختر Team وProvisioning Profile.
+2. راجع Bundle ID ونسخة `100.0.0 (10000)`.
+3. فعّل Push Notifications للحساب الصحيح.
+4. Product → Archive → Validate → App Store Connect.
 
----
+App Store Privacy يجب أن يطابق سياسة الخصوصية والاستخدام الفعلي. تسجيل Google هو مسار الحساب الوحيد حاليًا؛ راجع سياسة Apple إذا أُضيفت مزوّدات اجتماعية أخرى.
 
-## ٨) قبل كل إصدار — تشيك ليست
+## فحص الإصدار
 
-- [ ] `npm run build` بينجح والملفات في `dist/`
-- [ ] رقم الإصدار متطابق في `package.json` و`js/config.js` و`sw.js`
-- [ ] Site URL في Supabase = `https://shaker15s.github.io/RTC-app/`
-- [ ] `org.resala.rtc.masar://auth` موجود في Redirect URLs
-- [ ] كل ملفات SQL اتشغّلت (شوف `APPLY-SCHEMA.md`)
-- [ ] الدخول بـ Google شغّال على الويب وعلى الجهاز
-- [ ] بانر «مفيش نت» بيظهر لما تقفل الشبكة
-- [ ] زرار الرجوع في أندرويد بيرجّع شاشة بدل ما يقفل التطبيق
-- [ ] شاشة البداية (Splash) بتختفي بعد أول شاشة حقيقية
+- [ ] `npm run build && npm test && npm run audit` ناجح.
+- [ ] migration v100 مطبق في Staging ثم Production.
+- [ ] تسجيل الدخول يعمل على Web/Android/iOS.
+- [ ] لا أسرار أو ملفات توقيع في `git status`.
+- [ ] الأذونات مطلوبة وقت الحاجة، وليست عند أول فتح.
+- [ ] الإشعار يفتح الشاشة الصحيحة.
+- [ ] شهادة QR/Serial تتحقق واسم النتيجة مقنّع.
+- [ ] فروع وروابط ومواعيد النشر راجعها مسؤول المحتوى.
+- [ ] Crash/ANR وAuth errors تحت المراقبة خلال staged rollout.

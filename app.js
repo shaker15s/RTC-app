@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   مسار RTC v10.0.2 — محرك الواجهة
+   مسار RTC v100.0.0 — محرك الواجهة
    الهوية من JWT فقط. الأدوار من السيرفر. الكتابة الحساسة عبر RPC.
    ═══════════════════════════════════════════════════════════════ */
 var CURRENT_USER = null;
@@ -7,6 +7,7 @@ var CURRENT_PROFILE = null;
 var navStack = [];
 var currentScreenId = 'splash';
 var _branches = [];
+var _adminCommittees = [];
 var _currentBatch = null;
 var _batchStudents = [];
 var _attendanceState = {};
@@ -14,6 +15,8 @@ var _currentSession = null;
 var _detailCourseId = null;
 var _exploreFilterText = '';
 var _exploreBranchId = '';
+var _exploreEnrollments = null;
+var _exploreRenderSeq = 0;
 var _authHandled = false;
 var _unread = 0;
 
@@ -48,9 +51,17 @@ function setEl(id, v) { UI.setEl(id, v); }
 
 /* ═══════════════ Navigation + guards ═══════════════ */
 function showScreenEl(id) {
-  document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
   var el = document.getElementById('screen-' + id);
-  if (el) el.classList.add('active');
+  document.querySelectorAll('.screen').forEach(function (screen) {
+    var active = screen === el;
+    screen.classList.toggle('active', active);
+    screen.setAttribute('aria-hidden', active ? 'false' : 'true');
+    try { screen.inert = !active; } catch (e) {}
+  });
+  if (el) {
+    var title = el.querySelector('h1, h2');
+    document.title = (title ? title.textContent.trim() + ' — ' : '') + 'مسار RTC';
+  }
   currentScreenId = id;
   var body = el && el.querySelector('.scr-body, .scr-body-full');
   if (body) body.scrollTop = 0;
@@ -80,6 +91,7 @@ function updateNavActive(id) {
   document.querySelectorAll('.nav-btn').forEach(function (b) {
     var on = b.getAttribute('data-screen') === id;
     b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
     var ic = b.querySelector('i');
     var name = b.getAttribute('data-icon');
     if (ic && name) ic.className = (on ? 'ph-fill ' : 'ph ') + name;
@@ -175,6 +187,15 @@ function routeToRoleHome() {
   else switchTab('s-home');
 }
 
+function consumeLaunchTarget() {
+  try {
+    var params = new URLSearchParams(location.search || '');
+    var target = params.get('screen');
+    if (!target || !SEC.canAccess(target, CURRENT_PROFILE && CURRENT_PROFILE.role)) return;
+    setTimeout(function () { push(target); }, 100);
+  } catch (e) {}
+}
+
 function renderScreen(id) {
   var map = {
     's-home': renderStudentHome, 's-courses': renderStudentCourses,
@@ -189,7 +210,7 @@ function renderScreen(id) {
     'v-excuses': renderStaffExcuses,
     'a-home': renderAdminHome, 'a-users': renderAdminUsers, 'a-courses': renderAdminCourses,
     'a-certs': renderAdminCerts, 'a-settings': renderAdminSettings,
-    'a-branches': renderBranchesAdmin, 'a-broadcast': renderBroadcast,
+    'a-branches': renderBranchesAdmin, 'a-committees': renderCommitteesAdmin, 'a-broadcast': renderBroadcast,
     's-analytics': renderAnalytics
   };
   if (map[id]) map[id]();
@@ -264,13 +285,18 @@ async function tryInitGoogle() {
   if (statusEl) statusEl.innerHTML = '<i class="ph-fill ph-info"></i><span>' + esc(t('googleHint')) + '</span>';
   var hint = document.getElementById('oauth-origin-hint');
   if (hint) {
-    var origin = location.origin + '/';
-    hint.innerHTML = '<div class="text-[11px] text-muted leading-relaxed">أضف هذا الرابط في Supabase → Authentication → Redirect URLs ثم اضغط الدخول من نفس التبويب:</div>' +
-      '<button type="button" class="chip text-[11px] mt-1.5 font-mono" id="copy-origin-btn" dir="ltr">' + esc(origin) + '</button>';
-    var copyBtn = document.getElementById('copy-origin-btn');
-    if (copyBtn) copyBtn.onclick = function () {
-      if (navigator.clipboard) navigator.clipboard.writeText(origin).then(function () { toast('تم نسخ الرابط', 'ok'); }).catch(function () {});
-    };
+    var isLocal = /^(localhost|127\.0\.0\.1|::1)$/.test(String(location.hostname || ''));
+    var debugAuth = !!(window.RTC_CONFIG && window.RTC_CONFIG.debugAuth);
+    hint.innerHTML = '';
+    if (isLocal || debugAuth) {
+      var origin = location.origin + '/';
+      hint.innerHTML = '<details class="auth-diagnostics"><summary>إعداد بيئة التطوير</summary><div>أضف رابط الرجوع إلى Supabase:</div>' +
+        '<button type="button" class="chip text-[11px] mt-1.5 font-mono" id="copy-origin-btn" dir="ltr">' + esc(origin) + '</button></details>';
+      var copyBtn = document.getElementById('copy-origin-btn');
+      if (copyBtn) copyBtn.onclick = function () {
+        if (navigator.clipboard) navigator.clipboard.writeText(origin).then(function () { toast('تم نسخ الرابط', 'ok'); }).catch(function () {});
+      };
+    }
   }
   if (!mount) return;
   mount.innerHTML = '';
@@ -304,9 +330,8 @@ async function hydrateSession(session) {
     await new Promise(function (r) { setTimeout(r, 600); });
     try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e2) {}
   }
-  if (CURRENT_PROFILE && CURRENT_PROFILE.lang) {
-    window.RTCi18n.setLang(CURRENT_PROFILE.lang);
-  }
+  /* Arabic is the reviewed production locale in v100. */
+  window.RTCi18n.setLang('ar');
   applyDarkMode();
   try { _branches = await API.fetchBranches(); } catch (e) { _branches = []; }
   refreshUnread();
@@ -314,24 +339,23 @@ async function hydrateSession(session) {
 }
 
 function profileComplete(p) {
-  return !!(p && p.full_name && p.full_name.trim().split(/\s+/).length >= 2 && p.phone && /^01[0125][0-9]{8}$/.test(p.phone));
+  return !!(p && p.full_name && p.full_name.trim().split(/\s+/).length >= 3 && p.phone && /^01[0125][0-9]{8}$/.test(p.phone) && p.branch_id);
 }
 
 async function afterAuth(session) {
   _authHandled = true;
   await hydrateSession(session);
+  if (window.RTCNative && RTCNative.initPush) RTCNative.initPush();
   if (window.location.hash && window.location.hash.indexOf('access_token') !== -1) {
     try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
   }
   if (profileComplete(CURRENT_PROFILE)) {
     toast(t('welcomeBack') + ' يا ' + (CURRENT_PROFILE.full_name.split(' ')[0]) + ' 🎉', 'ok');
     routeToRoleHome();
+    consumeLaunchTarget();
   } else {
     fillOnbFromAuth();
-    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
-    var onb = document.getElementById('screen-onboarding');
-    if (onb) onb.classList.add('active');
-    currentScreenId = 'onboarding';
+    showScreenEl('onboarding');
     nextOnbStep(2);
   }
 }
@@ -344,6 +368,11 @@ function fillOnbFromAuth() {
   var e = document.getElementById('onb-email-chip'); if (e) e.value = email;
   if (CURRENT_PROFILE && CURRENT_PROFILE.phone) {
     var p = document.getElementById('onb-phone'); if (p) p.value = CURRENT_PROFILE.phone;
+  }
+  if (CURRENT_PROFILE && CURRENT_PROFILE.branch_id) {
+    var branchInput = document.getElementById('onb-address'); if (branchInput) branchInput.value = CURRENT_PROFILE.branch_id;
+    var branch = _branches.find(function (item) { return item.id === CURRENT_PROFILE.branch_id; });
+    var branchLabel = document.getElementById('onb-branch-lbl'); if (branchLabel && branch) branchLabel.textContent = branch.name_ar;
   }
 }
 
@@ -360,6 +389,7 @@ function triggerBranchPickerOnb() {
   openBranchPicker(document.getElementById('onb-address') && document.getElementById('onb-address').value, function (id, label) {
     var h = document.getElementById('onb-address'); if (h) h.value = id;
     var tEl = document.getElementById('onb-branch-lbl'); if (tEl) tEl.textContent = label;
+    var err = document.getElementById('err-branch'); if (err) err.classList.remove('show');
   });
 }
 
@@ -389,12 +419,16 @@ async function submitProfile(el) {
   var name = nameEl.value.trim().replace(/\s+/g, ' ');
   var phone = normalizePhoneDigits(phoneEl.value);
   if (phoneEl.value !== phone) phoneEl.value = phone;
-  var branchId = (branchEl && branchEl.value) || (_branches[0] && _branches[0].id);
+  var branchId = (branchEl && branchEl.value) || '';
   clearFieldError('onb-name', 'err-name'); clearFieldError('onb-phone', 'err-phone');
+  var branchErr = document.getElementById('err-branch'); if (branchErr) branchErr.classList.remove('show');
   var ok = true;
   if (name.split(/\s+/).filter(Boolean).length < 3 || name.length < 6) { setFieldError('onb-name', 'err-name'); ok = false; }
   if (!/^01[0125][0-9]{8}$/.test(phone)) { setFieldError('onb-phone', 'err-phone'); ok = false; }
-  if (!ok) { toast('راجع الاسم الثلاثي ورقم الموبايل', 'err'); return; }
+  if (!SEC.isUuid(branchId) || !_branches.some(function (branch) { return branch.id === branchId; })) {
+    if (branchErr) branchErr.classList.add('show'); ok = false;
+  }
+  if (!ok) { toast('راجع الاسم ورقم الموبايل واختر الفرع', 'err'); return; }
   if (!CURRENT_USER) { toast(t('needLogin'), 'err'); nextOnbStep(1); return; }
 
   var btn = (el && el.nodeType === 1) ? el : document.querySelector('#onb-step-2 .btn-primary');
@@ -416,6 +450,8 @@ async function submitProfile(el) {
 
 function askLogout() {
   UI.showConfirm(t('logout') + '؟', 'سيتم إنهاء الجلسة على هذا الجهاز.', async function () {
+    try { await API.disablePushDevices(); } catch (e) {}
+    if (window.RTCNative && RTCNative.unregisterPush) await RTCNative.unregisterPush();
     try { await API.signOut(); } catch (e) {}
     CURRENT_USER = CURRENT_PROFILE = null;
     API.invalidate();
@@ -425,6 +461,8 @@ function askLogout() {
 
 function resetAppData() {
   UI.showConfirm('مسح بيانات الجهاز؟', 'سيتم تسجيل الخروج ومسح التخزين المحلي فقط. بيانات السحابة لن تُحذف.', async function () {
+    try { await API.disablePushDevices(); } catch (e) {}
+    if (window.RTCNative && RTCNative.unregisterPush) await RTCNative.unregisterPush();
     try { await API.signOut(); } catch (e) {}
     localStorage.clear();
     location.reload();
@@ -437,6 +475,19 @@ function getGreeting() {
   if (hr >= 5 && hr < 12) return 'صباح الخير والهمة ☀️';
   if (hr >= 12 && hr < 18) return 'مساء الخير والنجاح 🌤️';
   return 'مساء الخير والتطوير 🌙';
+}
+
+function formatBatchSchedule(batch) {
+  if (!batch) return '';
+  if (batch.starts_at) {
+    try {
+      return new Intl.DateTimeFormat('ar-EG', {
+        weekday: 'long', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+        timeZone: batch.timezone || 'Africa/Cairo'
+      }).format(new Date(batch.starts_at));
+    } catch (e) {}
+  }
+  return batch.schedule || '';
 }
 
 function branchOf(p) {
@@ -473,8 +524,9 @@ async function renderStudentHome() {
 
   var fbBanner = document.getElementById('sh-fb-banner');
   if (fbBanner) {
-    if (br && br.facebook_url) {
-      fbBanner.href = br.facebook_url;
+    var branchFacebook = br && SEC.safeUrl(br.facebook_url);
+    if (branchFacebook) {
+      fbBanner.href = branchFacebook;
       fbBanner.classList.remove('hidden');
       var ft = fbBanner.querySelector('.fb-title'); if (ft) ft.textContent = 'صفحة الفرع على فيسبوك';
       var fd = fbBanner.querySelector('.fb-desc'); if (fd) fd.textContent = 'جداول المقابلات ومواعيد فتح المجموعات';
@@ -485,6 +537,7 @@ async function renderStudentHome() {
 
   var enrollments = [];
   try { enrollments = await API.fetchMyEnrollments(); } catch (e) {}
+  if (window.RTCNative && RTCNative.syncCourseReminders) RTCNative.syncCourseReminders(enrollments).catch(function () {});
   var next = document.getElementById('sh-next-lect');
   if (next) {
     if (!enrollments.length) {
@@ -496,7 +549,7 @@ async function renderStudentHome() {
       next.innerHTML = '<div class="c-card" style="cursor:default">' +
         '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
         '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
-        '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div></div></div>';
+        '<div class="text-[11px] text-muted">' + esc(formatBatchSchedule(b)) + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div></div></div>';
     }
   }
   var list = document.getElementById('sh-courses');
@@ -563,15 +616,25 @@ function triggerExploreBranchPickerUI() {
   });
 }
 
-async function renderExplore() { renderExploreListFiltered(); }
+async function renderExplore() {
+  _exploreEnrollments = null;
+  renderExploreListFiltered();
+}
 
 async function renderExploreListFiltered() {
   var list = document.getElementById('explore-list');
   if (!list) return;
-  list.innerHTML = UI.skeleton(4);
+  var seq = ++_exploreRenderSeq;
+  if (!_exploreEnrollments) list.innerHTML = UI.skeleton(4);
   try {
-    var pack = await Promise.all([API.fetchBatches(true, _exploreBranchId || null), API.fetchMyEnrollments()]);
+    var pack = await Promise.all([
+      API.fetchBatches(false, null),
+      _exploreEnrollments ? Promise.resolve(_exploreEnrollments) : API.fetchMyEnrollments()
+    ]);
+    if (seq !== _exploreRenderSeq) return;
     var batches = pack[0], myEnroll = pack[1];
+    _exploreEnrollments = myEnroll;
+    if (_exploreBranchId) batches = batches.filter(function (batch) { return batch.branch_id === _exploreBranchId; });
     var mine = {};
     myEnroll.forEach(function (e) { mine[e.batch_id] = true; });
     var available = batches.filter(function (b) { return !mine[b.id]; });
@@ -590,12 +653,13 @@ async function renderExploreListFiltered() {
 
     list.innerHTML = available.map(function (b) {
       var c = b.courses || {};
+      var mode = b.delivery_mode === 'online' ? 'أونلاين' : b.delivery_mode === 'hybrid' ? 'هجين' : 'حضوري';
       return '<div class="c-card" style="align-items:flex-start" data-batch-card="' + esc(b.id) + '">' +
         '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
         '<div class="flex-1"><div class="flex items-center justify-between"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
         '<span class="chip" style="padding:4px 10px;font-size:9.5px">' + esc(c.category || '') + '</span></div>' +
-        '<div class="text-[11px] mt-1 text-teal font-bold">' + esc(b.name) + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
-        '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-calendar-blank"></i> ' + esc(b.schedule || '') + '</div>' +
+        '<div class="text-[11px] mt-1 text-teal font-bold">' + esc(b.name) + ' · ' + esc((b.branches && b.branches.name_ar) || '') + ' · ' + mode + '</div>' +
+        '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-calendar-blank"></i> ' + esc(formatBatchSchedule(b)) + '</div>' +
         '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-chalkboard-teacher"></i> ' + esc((b.profiles && b.profiles.full_name) || 'سيُحدد لاحقاً') + '</div>' +
         seatMeterHTML(seats[b.id], c.max_students) +
         '<div class="flex gap-2 mt-2"><button class="btn btn-primary btn-sm flex-1" data-act="joinBatch" data-arg1="' + esc(b.id) + '" data-busy-label="جاري الانضمام" data-keep-ok="1"><i class="ph-bold ph-plus"></i> انضمام مجاني</button>' +
@@ -644,6 +708,7 @@ async function joinBatch(batchId, el) {
   var run = async function () {
     var r = await API.joinBatch(batchId);
     API.invalidate();
+    _exploreEnrollments = null;
     if (r && r.status === 'waitlisted') { toast(t('waitlisted'), 'warn'); return false; }
     if (r && r.status === 'already') { toast(t('alreadyIn'), 'info'); return false; }
     UI.fireConfetti(30);
@@ -678,6 +743,7 @@ async function renderCourseDetail() {
   try {
     var d = await API.fetchCourseDetail(_detailCourseId);
     var c = d.course;
+    var outcomes = Array.isArray(c.learning_outcomes) ? c.learning_outcomes : [];
     var avg = 0;
     if (d.ratings.length) avg = d.ratings.reduce(function (s, r) { return s + r.rating; }, 0) / d.ratings.length;
     body.innerHTML =
@@ -688,10 +754,13 @@ async function renderCourseDetail() {
         '<div class="flex gap-2 mt-3 text-xs"><span class="chip bg-white/15 text-white border-white/20">' + (c.sessions_count || 8) + ' محاضرات</span>' +
         '<span class="chip bg-white/15 text-white border-white/20">' + esc(c.level || 'الكل') + '</span>' +
         (avg ? '<span class="chip bg-white/15 text-white border-white/20">★ ' + avg.toFixed(1) + '</span>' : '') + '</div></div>' +
+      ((c.requirements || outcomes.length) ? '<div class="card p-4"><div class="font-bold text-sm mb-2">ماذا ستتعلم؟</div>' +
+        (outcomes.length ? '<ul class="course-outcomes">' + outcomes.map(function (item) { return '<li><i class="ph-bold ph-check-circle"></i><span>' + esc(item) + '</span></li>'; }).join('') + '</ul>' : '') +
+        (c.requirements ? '<div class="text-[11px] text-muted mt-3"><b>المتطلبات:</b> ' + esc(c.requirements) + '</div>' : '') + '</div>' : '') +
       '<div class="sec-t">المجموعات المتاحة</div>' +
       (d.batches.length ? d.batches.map(function (b) {
         return '<div class="c-card"><div class="flex-1"><div class="text-sm font-bold">' + esc(b.name) + '</div>' +
-          '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + ' · ' + esc((b.profiles && b.profiles.full_name) || 'محاضر لاحقاً') + '</div></div>' +
+          '<div class="text-[11px] text-muted">' + esc(formatBatchSchedule(b)) + ' · ' + esc((b.profiles && b.profiles.full_name) || 'محاضر لاحقاً') + '</div></div>' +
           '<button class="btn btn-primary btn-sm" onclick="joinBatch(\'' + esc(b.id) + '\')">انضمام</button></div>';
       }).join('') : UI.emptyState('ph-users', 'لا مجموعات بعد', 'ترقب الافتتاح')) +
       '<div class="sec-t mt-4">قيّم الدورة</div>' +
@@ -810,10 +879,10 @@ function generateCertificatePDF(courseTitle, studentName, serial, issued) {
   ctx.beginPath(); ctx.arc(W / 2, 168, 54, 0, Math.PI * 2);
   var lg = ctx.createLinearGradient(W / 2 - 54, 120, W / 2 + 54, 220); lg.addColorStop(0, '#00288e'); lg.addColorStop(1, '#00554e');
   ctx.fillStyle = lg; ctx.fill();
-  ctx.fillStyle = '#fff'; ctx.font = '800 46px Inter,sans-serif'; ctx.fillText('R', W / 2, 185);
-  ctx.fillStyle = '#0f1420'; ctx.font = '700 30px "IBM Plex Sans Arabic",sans-serif'; ctx.fillText('مركز رسالة للتنمية والتطوير', W / 2, 262);
+  ctx.fillStyle = '#fff'; ctx.font = '800 31px Inter,sans-serif'; ctx.fillText('RTC', W / 2, 180);
+  ctx.fillStyle = '#0f1420'; ctx.font = '700 30px "IBM Plex Sans Arabic",sans-serif'; ctx.fillText('مراكز رسالة للتدريب', W / 2, 262);
   ctx.font = '800 62px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#00288e'; ctx.fillText('شهادة إتمام دورة تدريبية', W / 2, 360);
-  ctx.font = '400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('تشهد إدارة مركز رسالة للتنمية والتطوير بأن الطالب/ة', W / 2, 460);
+  ctx.font = '400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('تشهد إدارة مراكز رسالة للتدريب بأن الطالب/ة', W / 2, 460);
   ctx.font = '800 54px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#0f1420'; ctx.fillText(studentName, W / 2, 540);
   ctx.font = '400 26px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#667085'; ctx.fillText('قد أتم / أتمت بنجاح متطلبات دورة', W / 2, 610);
   ctx.font = '700 40px "IBM Plex Sans Arabic",sans-serif'; ctx.fillStyle = '#00554e'; ctx.fillText(courseTitle || '—', W / 2, 668);
@@ -1007,14 +1076,86 @@ async function ackNotif(id) {
   try { await API.markNotifRead(id); refreshUnread(); } catch (e) {}
 }
 
-function renderSupport() {
+async function renderSupport() {
   var faqEl = document.getElementById('faq-list');
-  if (!faqEl) return;
-  faqEl.innerHTML = FAQ.map(function (f, i) {
-    return '<div class="faq-item card p-3 mb-2" id="faq-' + i + '"><div class="faq-q font-bold text-sm cursor-pointer flex items-center justify-between" onclick="toggleFaq(' + i + ')"><span>' + esc(f.q) + '</span><i class="ph-bold ph-caret-down faq-caret"></i></div><div class="faq-a text-xs leading-relaxed">' + esc(f.a) + '</div></div>';
-  }).join('');
+  if (faqEl) {
+    faqEl.innerHTML = FAQ.map(function (f, i) {
+      return '<div class="faq-item card p-3 mb-2" id="faq-' + i + '"><button class="faq-q font-bold text-sm cursor-pointer flex items-center justify-between w-full text-right" onclick="toggleFaq(' + i + ')" aria-expanded="false"><span>' + esc(f.q) + '</span><i class="ph-bold ph-caret-down faq-caret"></i></button><div class="faq-a text-xs leading-relaxed">' + esc(f.a) + '</div></div>';
+    }).join('');
+  }
+
+  var volunteerEl = document.getElementById('volunteer-tracks');
+  if (volunteerEl) {
+    var tracks = await API.fetchVolunteerCommittees();
+    volunteerEl.innerHTML = tracks.map(function (track) {
+      var applyUrl = track.is_accepting ? SEC.safeUrl(track.application_url) : '';
+      var applying = track.is_accepting ? '<span class="status-chip st-a">متاح الآن</span>' : '';
+      return '<article class="volunteer-track"><div class="volunteer-track-head"><i class="ph-duotone ' + SEC.safeIcon(track.icon, 'ph-hand-heart') + '"></i><span class="flex-1">' + esc(track.name_ar) + '</span>' + applying + '</div>' +
+        '<p>' + esc((track.roles || []).join(' · ')) + '</p>' +
+        (applyUrl ? '<a class="text-[10px] text-primary font-bold inline-flex items-center gap-1 mt-2" href="' + esc(applyUrl) + '" target="_blank" rel="noopener noreferrer">قدّم الآن <i class="ph-bold ph-arrow-square-out"></i></a>' : '') + '</article>';
+    }).join('');
+  }
+
+  var branchEl = document.getElementById('support-branches');
+  if (!branchEl) return;
+  branchEl.innerHTML = UI.skeleton(3);
+  try {
+    var live = await API.fetchBranches();
+    var fallback = (window.RTCContent && window.RTCContent.branchFallback) || [];
+    var bySlug = {};
+    fallback.forEach(function (branch) { bySlug[branch.slug] = Object.assign({}, branch); });
+    (live || []).forEach(function (branch) {
+      var key = branch.slug || branch.id;
+      bySlug[key] = Object.assign({}, bySlug[key] || {}, branch);
+    });
+    var branches = Object.keys(bySlug).map(function (key) { return bySlug[key]; });
+    branchEl.innerHTML = branches.length ? branches.map(function (branch) {
+      var fb = SEC.safeUrl(branch.facebook_url);
+      var phone = String(branch.hotline || branch.whatsapp || '19450').replace(/[^0-9+]/g, '');
+      var tel = SEC.safeUrl('tel:' + phone);
+      var maps = SEC.safeUrl(branch.maps_url) || (branch.address ? 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(branch.address + ' ' + (branch.city || '')) : '');
+      return '<article class="branch-support-card"><div class="branch-support-icon"><i class="ph-duotone ph-map-pin"></i></div>' +
+        '<div class="min-w-0 flex-1"><div class="text-xs font-bold">' + esc(branch.name_ar || branch.name_en || 'فرع RTC') + '</div>' +
+        '<div class="text-[9.5px] text-muted mt-0.5 line-clamp-2">' + esc(branch.address || branch.city || 'راجع صفحة الفرع للمواعيد والعنوان') + '</div></div>' +
+        '<div class="branch-support-actions">' +
+          (tel ? '<a class="branch-mini-action" href="' + esc(tel) + '" aria-label="اتصال"><i class="ph-bold ph-phone"></i></a>' : '') +
+          (fb ? '<a class="branch-mini-action" href="' + esc(fb) + '" target="_blank" rel="noopener noreferrer" aria-label="فيسبوك"><i class="ph-fill ph-facebook-logo"></i></a>' : '') +
+          (maps ? '<a class="branch-mini-action" href="' + esc(maps) + '" target="_blank" rel="noopener noreferrer" aria-label="الاتجاهات"><i class="ph-bold ph-navigation-arrow"></i></a>' : '') +
+        '</div></article>';
+    }).join('') : UI.emptyState('ph-map-pin', 'الدليل قيد التحديث', 'اتصل على 19450 لمعرفة أقرب فرع');
+  } catch (e) {
+    branchEl.innerHTML = UI.emptyState('ph-buildings', 'تعذّر تحميل الفروع', 'اتصل على 19450 أو راجع الصفحة المركزية');
+  }
 }
-function toggleFaq(i) { var el = document.getElementById('faq-' + i); if (el) el.classList.toggle('open'); }
+
+function toggleFaq(i) {
+  var el = document.getElementById('faq-' + i);
+  if (!el) return;
+  var open = !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  var btn = el.querySelector('.faq-q');
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+async function enableRTCNotifications() {
+  if (!window.RTCNative || !RTCNative.isNative || !RTCNative.isNative()) {
+    toast('إشعارات الجهاز متاحة في نسخة Android وiPhone', 'info'); return;
+  }
+  try {
+    var enabled = await RTCNative.enableNotifications();
+    toast(enabled ? 'تم تفعيل الإشعارات والتذكيرات' : 'يمكنك تفعيل الإشعارات من إعدادات الجهاز', enabled ? 'ok' : 'warn');
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+async function installRTCApp() {
+  if (window.RTCNative && RTCNative.isNative && RTCNative.isNative()) {
+    toast('أنت تستخدم نسخة التطبيق بالفعل', 'ok'); return;
+  }
+  if (!window.RTCPWA) { toast('التثبيت غير متاح في هذا المتصفح', 'warn'); return; }
+  var result = await RTCPWA.install();
+  if (result.installed) toast('تم تثبيت مسار RTC', 'ok');
+  else if (result.reason === 'unavailable') toast('من قائمة المتصفح اختر «إضافة إلى الشاشة الرئيسية»', 'info');
+}
 
 async function shareApp() {
   var url = location.origin + location.pathname;
@@ -1035,9 +1176,27 @@ function renderCheckin() {
   var box = document.getElementById('checkin-box');
   if (!box) return;
   box.innerHTML =
-    '<div class="card p-4 flex flex-col gap-3"><p class="text-xs text-muted">أدخل رمز المحاضرة الذي يعرضه المتطوع، أو امسح QR إن وُجد.</p>' +
-    '<input class="inp font-mono text-center text-xl tracking-widest" id="ci-code" maxlength="8" dir="ltr" placeholder="ABC123" style="text-transform:uppercase">' +
-    '<button class="btn btn-primary btn-big" data-act="doCheckin" data-busy-label="جاري التسجيل"><i class="ph-bold ph-qr-code"></i> تأكيد حضوري</button></div>';
+    '<div class="card p-4 flex flex-col gap-3"><div class="checkin-visual"><i class="ph-duotone ph-qr-code"></i></div><p class="text-xs text-muted text-center">امسح QR المعروض عند المتطوع، أو أدخل رمز المحاضرة يدويًا.</p>' +
+    '<button class="btn btn-teal btn-big" onclick="scanCheckinQr(this)" data-busy-label="جارٍ التسجيل"><i class="ph-bold ph-camera"></i> مسح QR بالكاميرا</button>' +
+    '<div class="checkin-divider"><span>أو أدخل الرمز</span></div>' +
+    '<input class="inp font-mono text-center text-xl tracking-widest" id="ci-code" maxlength="12" dir="ltr" autocomplete="one-time-code" placeholder="ABC123" style="text-transform:uppercase">' +
+    '<button class="btn btn-primary btn-big" data-act="doCheckin" data-busy-label="جاري التسجيل"><i class="ph-bold ph-check-circle"></i> تأكيد حضوري</button></div>';
+}
+
+async function scanCheckinQr(el) {
+  try {
+    if (!window.RTCNative || !RTCNative.scanQrCode) throw new Error('ماسح QR غير متاح');
+    var raw = (await RTCNative.scanQrCode()).trim();
+    if (!raw) return;
+    var match = raw.match(/^RTC-CHECKIN:([^|]+)/i);
+    var code = (match ? match[1] : raw).trim().toUpperCase();
+    if (!/^[A-Z0-9]{4,12}$/.test(code)) { toast('هذا ليس رمز حضور RTC صالحًا', 'err'); return; }
+    var input = document.getElementById('ci-code'); if (input) input.value = code;
+    await doCheckin(el);
+  } catch (e) {
+    var message = String((e && e.message) || '');
+    if (!/cancel|canceled|cancelled|إلغاء/i.test(message)) toast(UI.humanError(e), 'err');
+  }
 }
 
 async function doCheckin(el) {
@@ -1117,7 +1276,7 @@ function batchSummaryCard(b) {
     '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
     '<div class="flex-1"><div class="text-sm font-bold">' + esc(b.name) + '</div>' +
     '<div class="text-[11px] text-muted">' + esc(c.title || '') + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
-    '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + '</div></div><i class="ph-bold ph-caret-left text-muted"></i></div>';
+    '<div class="text-[11px] text-muted">' + esc(formatBatchSchedule(b)) + '</div></div><i class="ph-bold ph-caret-left text-muted"></i></div>';
 }
 
 async function renderVolunteerBatches() {
@@ -1151,7 +1310,7 @@ async function openBatchDetail(batchId) {
       '<h1 class="text-sm font-bold">' + esc(_currentBatch.name) + '</h1><span class="status-chip st-a">' + _batchStudents.length + ' طالب</span></div></div>' +
       '<div class="scr-body" id="vbd-body">' +
       '<div class="grad-hero p-4 rounded-3xl text-white shadow-xl mb-4"><div class="text-lg font-bold">' + esc(c.title || _currentBatch.name) + '</div>' +
-      '<div class="text-xs text-white/80 mt-1">' + esc(_currentBatch.schedule || '') + '</div></div>' +
+      '<div class="text-xs text-white/80 mt-1">' + esc(formatBatchSchedule(_currentBatch)) + '</div></div>' +
       '<div class="grid grid-cols-2 gap-2 mb-4">' +
       '<button class="btn btn-primary btn-sm" onclick="startTodaySession()"><i class="ph-bold ph-qr-code"></i> بدء محاضرة اليوم</button>' +
       '<button class="btn btn-soft btn-sm" onclick="exportBatchRosterCSV()"><i class="ph-bold ph-file-csv"></i> تصدير CSV</button>' +
@@ -1338,10 +1497,13 @@ async function openAddBatchModal() {
   var bOpts = _branches.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name_ar) + '</option>'; }).join('');
   UI.openSheet(
     '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">مجموعة جديدة</h3>' +
-    '<select class="inp" id="nb-course">' + cOpts + '</select>' +
-    '<input class="inp" id="nb-title" placeholder="اسم المجموعة">' +
-    '<select class="inp" id="nb-branch">' + bOpts + '</select>' +
-    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="nb-schedule" placeholder="الأيام"><input class="inp" id="nb-time" placeholder="الوقت"></div>' +
+    '<label class="lbl">الدورة</label><select class="inp" id="nb-course">' + cOpts + '</select>' +
+    '<label class="lbl">اسم المجموعة</label><input class="inp" id="nb-title" maxlength="120" placeholder="مثال: المجموعة المسائية A">' +
+    '<label class="lbl">الفرع</label><select class="inp" id="nb-branch">' + bOpts + '</select>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">البداية</label><input class="inp" id="nb-start" type="datetime-local"></div><div><label class="lbl">النهاية المتوقعة</label><input class="inp" id="nb-end" type="datetime-local"></div></div>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">نمط الحضور</label><select class="inp" id="nb-mode"><option value="offline">حضوري</option><option value="online">أونلاين</option><option value="hybrid">هجين</option></select></div><div><label class="lbl">القاعة/المكان</label><input class="inp" id="nb-location" maxlength="180" placeholder="قاعة 2"></div></div>' +
+    '<label class="lbl">رابط الاجتماع — للأونلاين فقط</label><input class="inp" id="nb-meeting" type="url" dir="ltr" placeholder="https://...">' +
+    '<label class="lbl">وصف متكرر للمواعيد</label><div class="grid grid-cols-2 gap-2"><input class="inp" id="nb-schedule" maxlength="100" placeholder="السبت والثلاثاء"><input class="inp" id="nb-time" maxlength="80" placeholder="6:00 مساءً"></div>' +
     '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-teal flex-1" onclick="saveNewBatch()">إنشاء</button></div></div>',
     'modal-add-batch'
   );
@@ -1352,10 +1514,27 @@ async function saveNewBatch() {
   var title = ((document.getElementById('nb-title') || {}).value || '').trim();
   var branch = (document.getElementById('nb-branch') || {}).value;
   var sched = [((document.getElementById('nb-schedule') || {}).value || '').trim(), ((document.getElementById('nb-time') || {}).value || '').trim()].filter(Boolean).join(' — ');
+  var startRaw = (document.getElementById('nb-start') || {}).value || '';
+  var endRaw = (document.getElementById('nb-end') || {}).value || '';
+  var startsAt = startRaw ? new Date(startRaw) : null;
+  var endsAt = endRaw ? new Date(endRaw) : null;
+  var mode = (document.getElementById('nb-mode') || {}).value || 'offline';
+  var meetingRaw = ((document.getElementById('nb-meeting') || {}).value || '').trim();
+  var meeting = meetingRaw ? SEC.safeUrl(meetingRaw) : '';
   if (!title || title.length < 3) { toast('اكتب اسم المجموعة', 'err'); return; }
-  if (!courseId) { toast('اختر الكورس', 'err'); return; }
+  if (!courseId || !SEC.isUuid(courseId)) { toast('اختر الكورس', 'err'); return; }
+  if (startsAt && Number.isNaN(startsAt.getTime())) { toast('راجع موعد البداية', 'err'); return; }
+  if (endsAt && (!startsAt || endsAt <= startsAt)) { toast('موعد النهاية يجب أن يكون بعد البداية', 'err'); return; }
+  if (meetingRaw && (!meeting || meeting.indexOf('https://') !== 0)) { toast('رابط الاجتماع يجب أن يبدأ بـ https://', 'err'); return; }
+  if (mode === 'online' && !meeting) { toast('أضف رابط الاجتماع للمجموعة الأونلاين', 'err'); return; }
   try {
-    await API.createBatch({ course_id: courseId, name: title, instructor_id: CURRENT_USER.id, branch_id: branch || null, schedule: sched });
+    await API.createBatch({
+      course_id: courseId, name: title, instructor_id: CURRENT_USER.id, branch_id: branch || null,
+      schedule: sched, starts_at: startsAt ? startsAt.toISOString() : null,
+      ends_at: endsAt ? endsAt.toISOString() : null, timezone: 'Africa/Cairo',
+      delivery_mode: mode, location: ((document.getElementById('nb-location') || {}).value || '').trim(),
+      room: ((document.getElementById('nb-location') || {}).value || '').trim(), meeting_url: meeting || null
+    });
     document.getElementById('modal-add-batch') && document.getElementById('modal-add-batch').remove();
     UI.fireConfetti(28);
     toast('تم إنشاء المجموعة', 'ok');
@@ -1408,7 +1587,7 @@ async function renderVolunteerCoursesList() {
         '<div class="border-t border-line pt-2 mt-2">' + (cBatches.length ? cBatches.map(function (b) {
           var mine = CURRENT_USER && b.instructor_id === CURRENT_USER.id;
           return '<div class="bg-card-2 p-2.5 rounded-xl flex items-center justify-between mb-1.5"><div><div class="text-xs font-bold">' + esc(b.name) + '</div>' +
-            '<div class="text-[11px] text-muted">' + esc(b.schedule || '') + '</div></div>' +
+            '<div class="text-[11px] text-muted">' + esc(formatBatchSchedule(b)) + '</div></div>' +
             (mine ? '<span class="chip text-[10px]">أنت المشرف ✓</span>' : '<button class="btn btn-sm btn-teal text-[11px] py-1 h-auto" onclick="assignSelfAsInstructor(\'' + esc(b.id) + '\')">تولّي الإشراف</button>') +
             '</div>';
         }).join('') : '<div class="text-xs text-muted">لا مجموعات — <a class="text-primary font-bold" onclick="openAddBatchModal()">إضافة</a></div>') + '</div></div>';
@@ -1565,10 +1744,13 @@ async function openEditCourseModal(courseId) {
   }).join('');
   UI.openSheet(
     '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">تعديل الدورة</h3>' +
-    '<input class="inp" id="ec-title" value="' + esc(course.title) + '">' +
-    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="ec-cat" value="' + esc(course.category || '') + '"><input class="inp" id="ec-sessions" type="number" value="' + (course.sessions_count || 8) + '"></div>' +
-    '<select class="inp" id="ec-branch">' + bOpts + '</select>' +
-    '<textarea class="inp" id="ec-desc" rows="2">' + esc(course.description || '') + '</textarea>' +
+    '<label class="lbl">عنوان الدورة</label><input class="inp" id="ec-title" maxlength="160" value="' + esc(course.title) + '">' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">التصنيف</label><input class="inp" id="ec-cat" maxlength="80" value="' + esc(course.category || '') + '"></div><div><label class="lbl">المستوى</label><input class="inp" id="ec-level" maxlength="50" value="' + esc(course.level || 'الكل') + '"></div></div>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">عدد المحاضرات</label><input class="inp" id="ec-sessions" type="number" min="1" max="100" value="' + (course.sessions_count || 8) + '"></div><div><label class="lbl">سعة المجموعة</label><input class="inp" id="ec-max" type="number" min="1" max="500" value="' + (course.max_students || 30) + '"></div></div>' +
+    '<label class="lbl">الفرع</label><select class="inp" id="ec-branch">' + bOpts + '</select>' +
+    '<label class="lbl">الوصف</label><textarea class="inp" id="ec-desc" rows="3" maxlength="1500">' + esc(course.description || '') + '</textarea>' +
+    '<label class="lbl">المتطلبات</label><textarea class="inp" id="ec-req" rows="2" maxlength="1000">' + esc(course.requirements || '') + '</textarea>' +
+    '<label class="lbl">مخرجات التعلّم — مخرج في كل سطر</label><textarea class="inp" id="ec-outcomes" rows="4" maxlength="1600">' + esc((Array.isArray(course.learning_outcomes) ? course.learning_outcomes : []).join('\n')) + '</textarea>' +
     '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveEditCourse(\'' + esc(course.id) + '\')">حفظ</button></div></div>',
     'modal-edit-course'
   );
@@ -1576,12 +1758,19 @@ async function openEditCourseModal(courseId) {
 
 async function saveEditCourse(id) {
   try {
+    var title = ((document.getElementById('ec-title') || {}).value || '').trim();
+    if (title.length < 3) { toast('اكتب عنوانًا واضحًا للدورة', 'err'); return; }
+    var outcomes = ((document.getElementById('ec-outcomes') || {}).value || '').split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean).slice(0, 12);
     await API.updateCourse(id, {
-      title: (document.getElementById('ec-title') || {}).value,
-      category: (document.getElementById('ec-cat') || {}).value,
-      sessions_count: parseInt((document.getElementById('ec-sessions') || {}).value, 10) || 8,
+      title: title,
+      category: ((document.getElementById('ec-cat') || {}).value || 'عام').trim(),
+      level: ((document.getElementById('ec-level') || {}).value || 'الكل').trim(),
+      sessions_count: Math.min(100, Math.max(1, parseInt((document.getElementById('ec-sessions') || {}).value, 10) || 8)),
+      max_students: Math.min(500, Math.max(1, parseInt((document.getElementById('ec-max') || {}).value, 10) || 30)),
       branch_id: (document.getElementById('ec-branch') || {}).value || null,
-      description: (document.getElementById('ec-desc') || {}).value
+      description: ((document.getElementById('ec-desc') || {}).value || '').trim(),
+      requirements: ((document.getElementById('ec-req') || {}).value || '').trim(),
+      learning_outcomes: outcomes
     });
     document.getElementById('modal-edit-course') && document.getElementById('modal-edit-course').remove();
     toast('تم التحديث', 'ok');
@@ -1594,10 +1783,13 @@ function openAddCourseModal() {
   var bOpts = _branches.map(function (b) { return '<option value="' + esc(b.id) + '">' + esc(b.name_ar) + '</option>'; }).join('');
   UI.openSheet(
     '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">كورس جديد</h3>' +
-    '<input class="inp" id="nc-title" placeholder="عنوان الدورة">' +
-    '<div class="grid grid-cols-2 gap-2"><input class="inp" id="nc-cat" placeholder="التصنيف"><input class="inp" id="nc-sessions" type="number" value="8"></div>' +
-    '<select class="inp" id="nc-branch">' + bOpts + '</select>' +
-    '<textarea class="inp" id="nc-desc" rows="2" placeholder="وصف مختصر"></textarea>' +
+    '<label class="lbl">عنوان الدورة</label><input class="inp" id="nc-title" maxlength="160" placeholder="مثال: أساسيات تحليل البيانات">' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">التصنيف</label><input class="inp" id="nc-cat" maxlength="80" placeholder="تكنولوجيا"></div><div><label class="lbl">المستوى</label><input class="inp" id="nc-level" maxlength="50" value="الكل"></div></div>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">المحاضرات</label><input class="inp" id="nc-sessions" type="number" min="1" max="100" value="8"></div><div><label class="lbl">السعة</label><input class="inp" id="nc-max" type="number" min="1" max="500" value="30"></div></div>' +
+    '<label class="lbl">الفرع</label><select class="inp" id="nc-branch">' + bOpts + '</select>' +
+    '<label class="lbl">الوصف</label><textarea class="inp" id="nc-desc" rows="3" maxlength="1500" placeholder="وصف مختصر وواضح"></textarea>' +
+    '<label class="lbl">المتطلبات</label><textarea class="inp" id="nc-req" rows="2" maxlength="1000" placeholder="المعرفة أو الأدوات المطلوبة — إن وجدت"></textarea>' +
+    '<label class="lbl">مخرجات التعلّم — مخرج في كل سطر</label><textarea class="inp" id="nc-outcomes" rows="4" maxlength="1600" placeholder="بنهاية الدورة سيتمكن المتدرب من..."></textarea>' +
     '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveNewCourse()">إضافة</button></div></div>',
     'modal-add-course'
   );
@@ -1608,11 +1800,17 @@ async function saveNewCourse() {
   if (title.length < 3) { toast('اكتب عنواناً', 'err'); return; }
   var colors = ['#00288e', '#00554e', '#7a30d8', '#d4af37', '#1e40af', '#ba1a1a'];
   try {
+    var outcomes = ((document.getElementById('nc-outcomes') || {}).value || '').split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean).slice(0, 12);
     await API.createCourse({
-      title: title, category: (document.getElementById('nc-cat') || {}).value || 'عام',
-      sessions_count: parseInt((document.getElementById('nc-sessions') || {}).value, 10) || 8,
+      title: title,
+      category: ((document.getElementById('nc-cat') || {}).value || 'عام').trim(),
+      level: ((document.getElementById('nc-level') || {}).value || 'الكل').trim(),
+      sessions_count: Math.min(100, Math.max(1, parseInt((document.getElementById('nc-sessions') || {}).value, 10) || 8)),
+      max_students: Math.min(500, Math.max(1, parseInt((document.getElementById('nc-max') || {}).value, 10) || 30)),
       branch_id: (document.getElementById('nc-branch') || {}).value || null,
-      description: (document.getElementById('nc-desc') || {}).value || '',
+      description: ((document.getElementById('nc-desc') || {}).value || '').trim(),
+      requirements: ((document.getElementById('nc-req') || {}).value || '').trim(),
+      learning_outcomes: outcomes,
       icon: 'ph-fill ph-book-open', color: colors[Math.floor(Math.random() * colors.length)],
       created_by: CURRENT_USER && CURRENT_USER.id
     });
@@ -1646,12 +1844,119 @@ async function renderBranchesAdmin() {
   try {
     _branches = await API.fetchBranches(true);
     el.innerHTML = _branches.map(function (b) {
-      return '<div class="card p-3 mb-2"><div class="font-bold text-sm">' + esc(b.name_ar) + '</div>' +
+      var facebook = SEC.safeUrl(b.facebook_url);
+      var status = b.data_status === 'verified' ? '<span class="status-chip st-a">تمت المراجعة</span>' : '<span class="status-chip st-p">يحتاج مراجعة</span>';
+      return '<div class="card p-3 mb-2"><div class="flex items-center justify-between gap-2"><div class="font-bold text-sm">' + esc(b.name_ar) + '</div>' + status + '</div>' +
         '<div class="text-xs text-muted mt-1">' + esc(b.address || '') + '</div>' +
         '<div class="text-[11px] mt-1">خط ساخن ' + esc(b.hotline || '19450') + (b.whatsapp ? ' · واتساب ' + esc(b.whatsapp) : '') + '</div>' +
-        (b.facebook_url ? '<a class="text-xs text-primary" href="' + esc(b.facebook_url) + '" target="_blank" rel="noopener">صفحة فيسبوك</a>' : '') + '</div>';
+        '<div class="flex items-center gap-2 mt-2">' +
+        (facebook ? '<a class="text-xs text-primary inline-flex items-center gap-1" href="' + esc(facebook) + '" target="_blank" rel="noopener noreferrer"><i class="ph-fill ph-facebook-logo"></i> صفحة الفرع</a>' : '') +
+        '<button class="btn btn-sm btn-soft mr-auto" onclick="openBranchEditor(\'' + esc(b.id) + '\')"><i class="ph-bold ph-pencil"></i> تعديل</button></div></div>';
     }).join('');
   } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
+}
+
+function openBranchEditor(id) {
+  var branch = _branches.find(function (item) { return item.id === id; });
+  if (!branch || !SEC.isUuid(id)) return;
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">تحديث بيانات الفرع</h3>' +
+    '<label class="lbl">الاسم المنشور</label><input class="inp" id="br-name" maxlength="160" value="' + esc(branch.name_ar || '') + '">' +
+    '<label class="lbl">المدينة/المحافظة</label><input class="inp" id="br-city" maxlength="100" value="' + esc(branch.city || '') + '">' +
+    '<label class="lbl">العنوان</label><textarea class="inp" id="br-address" rows="3" maxlength="500">' + esc(branch.address || '') + '</textarea>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">الخط الساخن</label><input class="inp" id="br-hotline" dir="ltr" maxlength="20" value="' + esc(branch.hotline || '19450') + '"></div><div><label class="lbl">واتساب</label><input class="inp" id="br-whatsapp" dir="ltr" maxlength="20" value="' + esc(branch.whatsapp || '') + '"></div></div>' +
+    '<label class="lbl">ساعات الاستقبال</label><input class="inp" id="br-hours" maxlength="300" value="' + esc(branch.opening_hours || '') + '" placeholder="مثال: يوميًا 2م–6م عدا الجمعة">' +
+    '<label class="lbl">صفحة Facebook الرسمية</label><input class="inp" id="br-facebook" dir="ltr" type="url" value="' + esc(branch.facebook_url || '') + '" placeholder="https://facebook.com/...">' +
+    '<label class="lbl">رابط Google Maps</label><input class="inp" id="br-maps" dir="ltr" type="url" value="' + esc(branch.maps_url || '') + '" placeholder="https://maps.google.com/...">' +
+    '<label class="lbl">رابط المصدر</label><input class="inp" id="br-source" dir="ltr" type="url" value="' + esc(branch.source_url || '') + '" placeholder="https://...">' +
+    '<label class="lbl">حالة مراجعة البيانات</label><select class="inp" id="br-status"><option value="needs_review"' + (branch.data_status !== 'verified' && branch.data_status !== 'archived' ? ' selected' : '') + '>تحتاج مراجعة</option><option value="verified"' + (branch.data_status === 'verified' ? ' selected' : '') + '>موثّقة</option><option value="archived"' + (branch.data_status === 'archived' ? ' selected' : '') + '>مؤرشفة</option></select>' +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveBranchEditor(\'' + esc(id) + '\')">حفظ وتوثيق</button></div></div>',
+    'modal-edit-branch'
+  );
+}
+
+async function saveBranchEditor(id) {
+  var urls = ['br-facebook','br-maps','br-source'];
+  for (var i = 0; i < urls.length; i++) {
+    var raw = ((document.getElementById(urls[i]) || {}).value || '').trim();
+    if (raw && (!SEC.safeUrl(raw) || raw.indexOf('https://') !== 0)) { toast('كل الروابط يجب أن تبدأ بـ https://', 'err'); return; }
+  }
+  var name = ((document.getElementById('br-name') || {}).value || '').trim();
+  if (name.length < 3) { toast('اكتب اسم الفرع', 'err'); return; }
+  try {
+    await API.updateBranch(id, {
+      name_ar: name,
+      city: ((document.getElementById('br-city') || {}).value || '').trim(),
+      address: ((document.getElementById('br-address') || {}).value || '').trim(),
+      hotline: ((document.getElementById('br-hotline') || {}).value || '').trim(),
+      whatsapp: ((document.getElementById('br-whatsapp') || {}).value || '').trim(),
+      opening_hours: ((document.getElementById('br-hours') || {}).value || '').trim(),
+      facebook_url: ((document.getElementById('br-facebook') || {}).value || '').trim(),
+      maps_url: ((document.getElementById('br-maps') || {}).value || '').trim(),
+      source_url: ((document.getElementById('br-source') || {}).value || '').trim(),
+      data_status: (document.getElementById('br-status') || {}).value || 'needs_review'
+    });
+    var modal = document.getElementById('modal-edit-branch'); if (modal) modal.remove();
+    toast('تم تحديث دليل الفرع', 'ok'); renderBranchesAdmin();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+async function renderCommitteesAdmin() {
+  var el = document.getElementById('committees-admin-list');
+  if (!el) return;
+  el.innerHTML = UI.skeleton(4);
+  try {
+    _adminCommittees = await API.fetchVolunteerCommittees(true);
+    el.innerHTML = _adminCommittees.length ? _adminCommittees.map(function (item) {
+      var verified = item.data_status === 'verified';
+      var editable = SEC.isUuid(item.id);
+      return '<article class="card p-4 mb-3"><div class="flex items-start gap-3"><div class="branch-support-icon"><i class="ph-duotone ' + SEC.safeIcon(item.icon, 'ph-hand-heart') + '"></i></div>' +
+        '<div class="flex-1 min-w-0"><div class="flex items-center gap-2 flex-wrap"><div class="font-bold text-sm">' + esc(item.name_ar) + '</div>' +
+        '<span class="status-chip ' + (item.is_accepting ? 'st-a' : 'st-p') + '">' + (item.is_accepting ? 'التقديم مفتوح' : 'التقديم مغلق') + '</span>' +
+        '<span class="status-chip ' + (verified ? 'st-a' : 'st-p') + '">' + (verified ? 'موثّق' : 'يحتاج مراجعة') + '</span></div>' +
+        '<div class="text-[11px] text-muted mt-1">' + esc(item.description || '') + '</div>' +
+        '<div class="text-[10px] text-muted mt-2">' + esc((item.roles || []).join(' · ')) + '</div></div>' +
+        (editable ? '<button class="btn btn-sm btn-soft" onclick="openCommitteeEditor(\'' + esc(item.id) + '\')"><i class="ph-bold ph-pencil"></i> تعديل</button>' : '') + '</div></article>';
+    }).join('') : UI.emptyState('ph-hand-heart', 'لا توجد لجان', 'طبّق migration v100 ثم أعد المحاولة');
+  } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذّر تحميل اللجان', UI.humanError(e)); }
+}
+
+function openCommitteeEditor(id) {
+  var item = _adminCommittees.find(function (row) { return row.id === id; });
+  if (!item || !SEC.isUuid(id)) return;
+  UI.openSheet(
+    '<div class="modal-sheet flex flex-col gap-3"><div class="modal-handle"></div><h3 class="font-bold">تعديل مسار التطوع</h3>' +
+    '<label class="lbl">الاسم المنشور</label><input class="inp" id="cm-name" maxlength="120" value="' + esc(item.name_ar) + '">' +
+    '<label class="lbl">الوصف</label><textarea class="inp" id="cm-desc" rows="3" maxlength="1200">' + esc(item.description || '') + '</textarea>' +
+    '<label class="lbl">المهام — مهمة في كل سطر</label><textarea class="inp" id="cm-roles" rows="5" maxlength="1800">' + esc((item.roles || []).join('\n')) + '</textarea>' +
+    '<div class="grid grid-cols-2 gap-2"><div><label class="lbl">حالة التقديم</label><select class="inp" id="cm-open"><option value="false"' + (!item.is_accepting ? ' selected' : '') + '>مغلق</option><option value="true"' + (item.is_accepting ? ' selected' : '') + '>مفتوح</option></select></div>' +
+    '<div><label class="lbl">حالة البيانات</label><select class="inp" id="cm-status"><option value="needs_review"' + (item.data_status === 'needs_review' ? ' selected' : '') + '>تحتاج مراجعة</option><option value="secondary_source"' + (item.data_status === 'secondary_source' ? ' selected' : '') + '>مصدر ثانوي</option><option value="verified"' + (item.data_status === 'verified' ? ' selected' : '') + '>موثّقة</option></select></div></div>' +
+    '<label class="lbl">رابط التقديم الرسمي</label><input class="inp" id="cm-url" type="url" dir="ltr" placeholder="https://..." value="' + esc(item.application_url || '') + '">' +
+    (item.source_url ? '<p class="data-note"><i class="ph-fill ph-link"></i><span>المصدر الحالي: ' + esc(item.source_url) + '</span></p>' : '') +
+    '<div class="flex gap-2"><button class="btn btn-soft flex-1" data-close>إلغاء</button><button class="btn btn-primary flex-1" onclick="saveCommitteeEditor(\'' + esc(id) + '\')">حفظ</button></div></div>',
+    'modal-edit-committee'
+  );
+}
+
+async function saveCommitteeEditor(id) {
+  var name = ((document.getElementById('cm-name') || {}).value || '').trim();
+  var urlRaw = ((document.getElementById('cm-url') || {}).value || '').trim();
+  var url = urlRaw ? SEC.safeUrl(urlRaw) : '';
+  if (name.length < 3) { toast('اكتب اسمًا واضحًا', 'err'); return; }
+  if (urlRaw && (!url || url.indexOf('https://') !== 0)) { toast('رابط التقديم يجب أن يبدأ بـ https://', 'err'); return; }
+  var roles = ((document.getElementById('cm-roles') || {}).value || '').split(/\n+/).map(function (line) { return line.trim(); }).filter(Boolean).slice(0, 20);
+  try {
+    await API.updateVolunteerCommittee(id, {
+      name_ar: name,
+      description: ((document.getElementById('cm-desc') || {}).value || '').trim(),
+      roles: roles,
+      is_accepting: (document.getElementById('cm-open') || {}).value === 'true',
+      data_status: (document.getElementById('cm-status') || {}).value || 'needs_review',
+      application_url: url || null
+    });
+    var modal = document.getElementById('modal-edit-committee'); if (modal) modal.remove();
+    toast('تم تحديث مسار التطوع', 'ok'); renderCommitteesAdmin();
+  } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
 function renderBroadcast() {
@@ -1770,7 +2075,7 @@ document.addEventListener('DOMContentLoaded', async function () {
     try { recovered = await API.recoverHashSession(); } catch (e0) { console.warn(e0); }
     var session = recovered || await API.getSession();
     if (session && session.user) {
-      await afterAuth(session);
+      if (!_authHandled) await afterAuth(session);
       return;
     }
   } catch (e) { console.warn(e); }
@@ -1779,7 +2084,5 @@ document.addEventListener('DOMContentLoaded', async function () {
     if (!_authHandled) { showScreenEl('onboarding'); nextOnbStep(1); }
   }, 800);
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=10.0.2').catch(function () {});
-  }
+  /* Service worker lifecycle is owned by js/pwa.js. */
 });
