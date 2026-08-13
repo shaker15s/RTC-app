@@ -223,15 +223,21 @@ BEGIN
 END $$;
 
 -- Aggregate seat counts without exposing the enrollment roster.
+-- Keep the legacy v10 OUT signature exactly: dependent clients/functions remain valid.
 CREATE OR REPLACE FUNCTION public.batch_seat_counts(p_batch_ids UUID[])
-RETURNS TABLE (batch_id UUID, enrolled BIGINT, capacity INT)
+RETURNS TABLE (batch_id UUID, enrolled INT, capacity INT, seats_left INT)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
   IF COALESCE(array_length(p_batch_ids, 1), 0) > 100 THEN RAISE EXCEPTION 'too many batches'; END IF;
   RETURN QUERY
-  SELECT b.id, COUNT(e.id), COALESCE(c.max_students, 0)
-  FROM public.batches b JOIN public.courses c ON c.id = b.course_id
+  SELECT
+    b.id,
+    COUNT(e.id)::INT,
+    COALESCE(c.max_students, 30)::INT,
+    GREATEST(COALESCE(c.max_students, 30) - COUNT(e.id)::INT, 0)::INT
+  FROM public.batches b
+  JOIN public.courses c ON c.id = b.course_id
   LEFT JOIN public.enrollments e ON e.batch_id = b.id
   WHERE b.id = ANY(p_batch_ids) AND b.is_active = true AND c.is_active = true
   GROUP BY b.id, c.max_students;
