@@ -2,6 +2,14 @@
 (function (w) {
   function sb() { return w.supabaseClient; }
 
+  async function sbReady() {
+    if (w.supabaseClient) return w.supabaseClient;
+    if (w.RTCSupabase && typeof w.RTCSupabase.ensure === 'function') {
+      return w.RTCSupabase.ensure();
+    }
+    return null;
+  }
+
   function unwrap(res, fallback) {
     if (!res) return fallback;
     if (res.error) throw res.error;
@@ -9,7 +17,7 @@
   }
 
   async function rpc(name, args) {
-    var client = sb();
+    var client = await sbReady();
     if (!client) throw new Error('تعذر الاتصال بقاعدة البيانات');
     var res = await client.rpc(name, args || {});
     return unwrap(res);
@@ -19,8 +27,9 @@
   function invalidate() { cache.courses = cache.batches = cache.branches = null; cache.ts = 0; }
 
   async function getSession() {
-    if (!sb()) return null;
-    var res = await sb().auth.getSession();
+    var client = await sbReady();
+    if (!client) return null;
+    var res = await client.auth.getSession();
     return res.data && res.data.session;
   }
 
@@ -37,23 +46,25 @@
   }
 
   async function recoverHashSession() {
-    if (!sb()) return null;
+    var client = await sbReady();
+    if (!client) return null;
     var raw = String(w.location.hash || '').replace(/^#/, '');
     if (!raw || raw.indexOf('access_token=') === -1) return null;
     var params = new URLSearchParams(raw);
     var access = params.get('access_token');
     var refresh = params.get('refresh_token') || '';
     if (!access) return null;
-    var res = await sb().auth.setSession({ access_token: access, refresh_token: refresh });
+    var res = await client.auth.setSession({ access_token: access, refresh_token: refresh });
     try { w.history.replaceState(null, '', w.location.pathname + w.location.search); } catch (e) {}
     if (res.error) throw res.error;
     return res.data && res.data.session;
   }
 
   async function signInGoogle() {
-    if (!sb()) throw new Error('Supabase غير متصل');
+    var client = await sbReady();
+    if (!client) throw new Error('تعذّر تحميل مكتبة الدخول. تأكد من الإنترنت وجرّب تاني.');
     var redirect = authRedirectUrl();
-    var res = await sb().auth.signInWithOAuth({
+    var res = await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: redirect,
@@ -242,7 +253,17 @@
       client.from('attendance').select('id, status, created_at'),
       client.from('enrollments').select('id')
     ]);
-    /* ═══ عدّاد المقاعد (بدون أي بيانات شخصية) ═══ */
+    return {
+      profs: pack[0].data || [],
+      courses: pack[1].data || [],
+      batches: pack[2].data || [],
+      certs: pack[3].data || [],
+      att: pack[4].data || [],
+      enroll: pack[5].data || []
+    };
+  }
+
+  /* ═══ عدّاد المقاعد (بدون أي بيانات شخصية) ═══ */
   var _seatCache = {};
   async function seatCounts(batchIds) {
     var ids = (batchIds || []).filter(Boolean);
@@ -259,7 +280,7 @@
       /* fallback: عدّ مباشر من enrollments لو الـ RPC مش منشور بعد */
       try {
         if (!sb()) return _seatCache || {};
-        var res = await sb().from('enrollments').select('batch_id').in('batch_id', ids).eq('status', 'active');
+        var res = await sb().from('enrollments').select('batch_id').in('batch_id', ids);
         if (res.error) throw res.error;
         var counts = {};
         (res.data || []).forEach(function (r) { counts[r.batch_id] = (counts[r.batch_id] || 0) + 1; });
@@ -267,16 +288,6 @@
         return out;
       } catch (e2) { return _seatCache || {}; }
     }
-  }
-
-  return {
-      profs: pack[0].data || [],
-      courses: pack[1].data || [],
-      batches: pack[2].data || [],
-      certs: pack[3].data || [],
-      att: pack[4].data || [],
-      enroll: pack[5].data || []
-    };
   }
 
   async function uploadAvatar(file) {
