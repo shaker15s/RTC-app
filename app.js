@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   مسار RTC v9.0 — محرك الواجهة
+   مسار RTC v10.0 — محرك الواجهة
    الهوية من JWT فقط. الأدوار من السيرفر. الكتابة الحساسة عبر RPC.
    ═══════════════════════════════════════════════════════════════ */
 var CURRENT_USER = null;
@@ -55,6 +55,7 @@ function showScreenEl(id) {
   var body = el && el.querySelector('.scr-body, .scr-body-full');
   if (body) body.scrollTop = 0;
   toggleNavForScreen(id);
+  if (id !== 'splash' && window.RTCNative) RTCNative.hideSplash();
 }
 
 function toggleNavForScreen(id) {
@@ -72,12 +73,25 @@ function toggleNavForScreen(id) {
   if (ns) ns.classList.toggle('hidden', !(role === 'student' && onTab));
   if (nv) nv.classList.toggle('hidden', !(role === 'volunteer' && onTab));
   if (na) na.classList.toggle('hidden', !(role === 'admin' && onTab));
+  syncToastPosition();
 }
 
 function updateNavActive(id) {
   document.querySelectorAll('.nav-btn').forEach(function (b) {
-    b.classList.toggle('active', b.getAttribute('data-screen') === id);
+    var on = b.getAttribute('data-screen') === id;
+    b.classList.toggle('active', on);
+    var ic = b.querySelector('i');
+    var name = b.getAttribute('data-icon');
+    if (ic && name) ic.className = (on ? 'ph-fill ' : 'ph ') + name;
   });
+}
+
+/* موضع السناك بار: فوق التاب بار لو ظاهر */
+function syncToastPosition() {
+  var ct = document.getElementById('toast-ct');
+  if (!ct) return;
+  var navUp = !!document.querySelector('.bottom-nav:not(.hidden)');
+  ct.classList.toggle('above-nav', navUp);
 }
 
 function guard(id) {
@@ -124,7 +138,21 @@ function switchTab(id) {
   showScreenEl(id);
   renderScreen(id);
   updateNavActive(id);
+  maybeHint(id);
   try { history.pushState({ screen: id }, '', '#' + id); } catch (e) {}
+}
+
+/* تلميحات أول مرة (مرة واحدة لكل شاشة) */
+var SCREEN_HINTS = {
+  's-home': { id: 'home', icon: 'ph-hand-waving', msg: 'أهلاً بك! من هنا تتابع كورساتك ونقاطك. اسحب للأسفل لتحديث البيانات.' },
+  's-explore': { id: 'explore', icon: 'ph-compass', msg: 'استكشف المجموعات المتاحة. العداد جنب كل مجموعة يوضّح المقاعد المتبقية.' },
+  's-checkin': { id: 'checkin', icon: 'ph-qr-code', msg: 'اطلب الرمز من المتطوع وقت المحاضرة، وأدخله هنا لتسجيل حضورك.' },
+  's-profile': { id: 'profile', icon: 'ph-user-gear', msg: 'من حسابك تعدّل بياناتك، تفعّل الوضع الليلي، وترسل طلبات الأعذار.' },
+  's-certs': { id: 'certs', icon: 'ph-certificate', msg: 'شهاداتك تظهر هنا بعد إتمام الدورة، وتقدر تحمّلها PDF أو تتحقق منها.' }
+};
+function maybeHint(id) {
+  var h = SCREEN_HINTS[id];
+  if (h && window.RTCMotion) setTimeout(function () { RTCMotion.hint(h.id, h.msg, { icon: h.icon }); }, 700);
 }
 
 window.addEventListener('popstate', function (ev) {
@@ -342,7 +370,7 @@ function openBranchPicker(currentId, onSelect) {
   UI.openPicker({ title: 'اختر الفرع', subtitle: 'الفرع يحدد كورساتك وإشعاراتك', items: items, currentVal: currentId, onSelect: onSelect });
 }
 
-async function submitProfile() {
+async function submitProfile(el) {
   var nameEl = document.getElementById('onb-name');
   var phoneEl = document.getElementById('onb-phone');
   var branchEl = document.getElementById('onb-address');
@@ -357,19 +385,16 @@ async function submitProfile() {
   if (!ok) { toast('راجع الاسم الثلاثي ورقم الموبايل', 'err'); return; }
   if (!CURRENT_USER) { toast(t('needLogin'), 'err'); nextOnbStep(1); return; }
 
-  var btn = document.querySelector('#onb-step-2 .btn-primary');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph-duotone ph-spinner spin"></i> جارٍ الحفظ...'; }
-  try {
+  var btn = (el && el.nodeType === 1) ? el : document.querySelector('#onb-step-2 .btn-primary');
+  await runBtn(btn, async function () {
     CURRENT_PROFILE = await API.updateMyProfile({ full_name: name, phone: phone, branch_id: branchId || null });
     CURRENT_PROFILE.badge_ids = CURRENT_PROFILE.badge_ids || ['welcome'];
     applyDarkMode();
     UI.fireConfetti();
     toast('تم إنشاء حسابك — أهلاً بك في رسالة 🎉', 'ok');
     routeToRoleHome();
-  } catch (err) {
-    toast(UI.humanError(err), 'err');
-    if (btn) { btn.disabled = false; btn.innerHTML = '<span>' + t('saveStart') + '</span><i class="ph-bold ph-check"></i>'; }
-  }
+    return true;
+  }, 'تم ✓');
 }
 
 function askLogout() {
@@ -543,37 +568,75 @@ async function renderExploreListFiltered() {
       list.innerHTML = UI.emptyState('ph-magnifying-glass', 'لا توجد مجموعات مطابقة', 'جرّب فرعاً آخر أو أزل البحث');
       return;
     }
+    var seats = {};
+    try { seats = await API.seatCounts(available.map(function (b) { return b.id; })); } catch (e) { seats = {}; }
+
     list.innerHTML = available.map(function (b) {
       var c = b.courses || {};
-      return '<div class="c-card" style="align-items:flex-start">' +
+      return '<div class="c-card" style="align-items:flex-start" data-batch-card="' + esc(b.id) + '">' +
         '<div class="pick-ic" style="background:' + SEC.safeColor(c.color) + '"><i class="' + SEC.safeIcon(c.icon) + '"></i></div>' +
         '<div class="flex-1"><div class="flex items-center justify-between"><div class="text-sm font-bold">' + esc(c.title || b.name) + '</div>' +
         '<span class="chip" style="padding:4px 10px;font-size:9.5px">' + esc(c.category || '') + '</span></div>' +
         '<div class="text-[11px] mt-1 text-teal font-bold">' + esc(b.name) + ' · ' + esc((b.branches && b.branches.name_ar) || '') + '</div>' +
         '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-calendar-blank"></i> ' + esc(b.schedule || '') + '</div>' +
         '<div class="text-[11px] mt-0.5 text-muted"><i class="ph-bold ph-chalkboard-teacher"></i> ' + esc((b.profiles && b.profiles.full_name) || 'سيُحدد لاحقاً') + '</div>' +
-        '<div class="flex gap-2 mt-2"><button class="btn btn-primary btn-sm flex-1" onclick="joinBatch(\'' + esc(b.id) + '\')"><i class="ph-bold ph-plus"></i> انضمام مجاني</button>' +
-        '<button class="btn btn-soft btn-sm" onclick="openCourseDetail(\'' + esc(c.id || '') + '\')">التفاصيل</button></div></div></div>';
+        seatMeterHTML(seats[b.id], c.max_students) +
+        '<div class="flex gap-2 mt-2"><button class="btn btn-primary btn-sm flex-1" data-act="joinBatch" data-arg1="' + esc(b.id) + '" data-busy-label="جاري الانضمام" data-keep-ok="1"><i class="ph-bold ph-plus"></i> انضمام مجاني</button>' +
+        '<button class="btn btn-soft btn-sm" data-act="openCourseDetail" data-arg1="' + esc(c.id || '') + '">التفاصيل</button></div></div></div>';
     }).join('');
+    if (window.RTCMotion) RTCMotion.stagger(list, '.c-card');
   } catch (e) {
     list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e), t('retry'), 'renderExplore()');
   }
 }
 
-async function joinBatch(batchId) {
+/* غلاف موحّد لأزرار العمليات: سبينر → ✓ أو هزّة خطأ */
+function runBtn(el, fn, okLabel) {
+  if (el && el.nodeType === 1 && window.RTCMotion) return RTCMotion.withButton(el, fn, okLabel);
+  return Promise.resolve(fn()).catch(function (e) { toast(UI.humanError(e), 'err'); return false; });
+}
+
+/* عداد المقاعد 12/30 */
+function seatMeterHTML(seat, fallbackMax) {
+  var cap = (seat && seat.capacity) || fallbackMax || 0;
+  if (!cap) return '';
+  var used = (seat && typeof seat.enrolled === 'number') ? seat.enrolled : 0;
+  var pct = Math.max(0, Math.min(100, Math.round((used / cap) * 100)));
+  var cls = pct >= 100 ? 'full' : pct >= 80 ? 'warn' : '';
+  var left = Math.max(0, cap - used);
+  var label = pct >= 100 ? 'اكتمل العدد — قائمة انتظار' : (left <= 5 ? 'باقي ' + left + ' مقاعد' : 'مقاعد متاحة');
+  return '<div class="seat-meter"><i class="ph-bold ph-users-three"></i>' +
+    '<span class="seat-num">' + used + '/' + cap + '</span>' +
+    '<span class="seat-track"><span class="seat-fill ' + cls + '" style="width:' + pct + '%"></span></span>' +
+    '<span>' + label + '</span></div>';
+}
+
+async function joinBatch(batchId, el) {
   if (!SEC.isUuid(batchId)) return;
+  var btn = (el && el.nodeType === 1) ? el : null;
+  var card = btn ? btn.closest('[data-batch-card]') : document.querySelector('[data-batch-card="' + batchId + '"]');
+  var MO = window.RTCMotion;
+
+  var run = async function () {
+    var r = await API.joinBatch(batchId);
+    API.invalidate();
+    if (r && r.status === 'waitlisted') { toast(t('waitlisted'), 'warn'); return false; }
+    if (r && r.status === 'already') { toast(t('alreadyIn'), 'info'); return false; }
+    UI.fireConfetti(30);
+    toast(t('joinOk'), 'ok');
+    if (CURRENT_PROFILE) { try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {} }
+    return true;
+  };
+
   UI.showConfirm('الانضمام لهذه المجموعة؟', 'سيظهر اسمك في كشف المتطوع، وستُحتسب نقاط الانضمام.', async function () {
-    try {
-      var r = await API.joinBatch(batchId);
-      API.invalidate();
-      if (r && r.status === 'waitlisted') toast(t('waitlisted'), 'warn');
-      else if (r && r.status === 'already') toast(t('alreadyIn'), 'info');
-      else { UI.fireConfetti(30); toast(t('joinOk'), 'ok'); }
-      if (CURRENT_PROFILE) {
-        try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {}
-      }
-      renderExplore();
-    } catch (e) { toast(UI.humanError(e), 'err'); }
+    if (btn && MO) {
+      var ok = await MO.withButton(btn, run, 'منضم ✓');
+      if (ok && card) { MO.flyOut(card, function () { renderExplore(); }); }
+      else if (!ok) renderExplore();
+      return;
+    }
+    try { await run(); } catch (e) { toast(UI.humanError(e), 'err'); }
+    renderExplore();
   }, { danger: false, yesLabel: 'تأكيد الانضمام' });
 }
 
@@ -692,15 +755,21 @@ async function renderCerts() {
         '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title || 'دورة') + '</div>' +
         '<div class="text-[11px] text-muted">شهادة إتمام — مركز رسالة</div>' +
         '<div class="text-[10px] mt-0.5 text-muted" dir="ltr"># ' + esc(cert.serial_number) + '</div></div>' +
-        '<button class="btn btn-teal btn-sm" onclick="downloadCertificate(\'' + esc(cert.serial_number) + '\',\'' + esc(c.title || '') + '\',\'' + (cert.issued_at || '') + '\')"><i class="ph-bold ph-download-simple"></i> PDF</button></div>';
+        '<button class="btn btn-teal btn-sm" data-act="downloadCertificate" data-arg1="' + esc(cert.serial_number) + '" data-arg2="' + esc(c.title || '') + '" data-arg3="' + (cert.issued_at || '') + '" data-busy-label="تجهيز"><i class="ph-bold ph-download-simple"></i> PDF</button></div>';
     }).join('');
   } catch (e) { list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
-function downloadCertificate(serial, title, issued) {
+function downloadCertificate(serial, title, issued, el) {
   if (!CURRENT_PROFILE) return;
-  toast('جارٍ تجهيز الشهادة...', 'info');
-  setTimeout(function () { generateCertificatePDF(title, CURRENT_PROFILE.full_name, serial, issued); }, 200);
+  return runBtn(el, function () {
+    return new Promise(function (resolve, reject) {
+      setTimeout(function () {
+        try { generateCertificatePDF(title, CURRENT_PROFILE.full_name, serial, issued); resolve(true); }
+        catch (e) { toast(UI.humanError(e), 'err'); reject(e); }
+      }, 220);
+    });
+  }, 'جاهزة ✓');
 }
 
 function generateCertificatePDF(courseTitle, studentName, serial, issued) {
@@ -855,21 +924,22 @@ async function editAvatar(event) {
   } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-async function saveEditProfile() {
+async function saveEditProfile(el) {
   var name = (document.getElementById('ep-name') || {}).value || '';
   var phone = (document.getElementById('ep-phone') || {}).value || '';
   var branch = (document.getElementById('ep-branch') || {}).value;
   name = name.trim(); phone = phone.trim();
   if (name.split(/\s+/).filter(Boolean).length < 2) { toast(t('invalidName'), 'err'); return; }
   if (!/^01[0125][0-9]{8}$/.test(phone)) { toast(t('invalidPhone'), 'err'); return; }
-  try {
+  await runBtn(el, async function () {
     CURRENT_PROFILE = await API.updateMyProfile({
       full_name: name, phone: phone, branch_id: branch || null,
       avatar_url: CURRENT_PROFILE.avatar_url
     });
     toast('تم حفظ التعديلات ✓', 'ok');
-    pop();
-  } catch (e) { toast(UI.humanError(e), 'err'); }
+    setTimeout(pop, 420);
+    return true;
+  }, 'تم الحفظ ✓');
 }
 
 async function renderLeaderboard() {
@@ -943,18 +1013,19 @@ function renderCheckin() {
   box.innerHTML =
     '<div class="card p-4 flex flex-col gap-3"><p class="text-xs text-muted">أدخل رمز المحاضرة الذي يعرضه المتطوع، أو امسح QR إن وُجد.</p>' +
     '<input class="inp font-mono text-center text-xl tracking-widest" id="ci-code" maxlength="8" dir="ltr" placeholder="ABC123" style="text-transform:uppercase">' +
-    '<button class="btn btn-primary btn-big" onclick="doCheckin()"><i class="ph-bold ph-qr-code"></i> تأكيد حضوري</button></div>';
+    '<button class="btn btn-primary btn-big" data-act="doCheckin" data-busy-label="جاري التسجيل"><i class="ph-bold ph-qr-code"></i> تأكيد حضوري</button></div>';
 }
 
-async function doCheckin() {
+async function doCheckin(el) {
   var code = ((document.getElementById('ci-code') || {}).value || '').trim();
   if (code.length < 4) { toast('أدخل الرمز كاملاً', 'err'); return; }
-  try {
+  await runBtn(el, async function () {
     await API.checkIn(code);
     UI.fireConfetti(40);
     toast('تم تسجيل حضورك ✓', 'ok');
     if (CURRENT_PROFILE) CURRENT_PROFILE = await API.fetchMyProfile();
-  } catch (e) { toast(UI.humanError(e), 'err'); }
+    return true;
+  }, 'تم الحضور ✓');
 }
 
 async function renderExcuseForm() {
@@ -973,7 +1044,7 @@ async function renderExcuseForm() {
       '<label class="lbl">المجموعة</label><select class="inp" id="ex-batch">' + opts + '</select>' +
       '<label class="lbl">سبب العذر</label><textarea class="inp" id="ex-reason" rows="3" placeholder="مثال: ظرف صحي طارئ مع تقرير"></textarea>' +
       '<label class="lbl">مرفق اختياري</label><input type="file" id="ex-file" class="inp" style="padding-top:12px">' +
-      '<button class="btn btn-primary btn-mid" onclick="submitExcuse()"><i class="ph-bold ph-paper-plane-tilt"></i> إرسال الطلب</button></div>' +
+      '<button class="btn btn-primary btn-mid" data-act="submitExcuse" data-busy-label="جاري الإرسال"><i class="ph-bold ph-paper-plane-tilt"></i> إرسال الطلب</button></div>' +
       '<div class="sec-t mt-4">طلباتك السابقة</div>' +
       (mine.length ? mine.map(function (x) {
         return '<div class="card p-3 mb-2"><div class="flex justify-between"><div class="text-sm font-bold">' + esc(x.reason).slice(0, 80) + '</div>' +
@@ -983,19 +1054,20 @@ async function renderExcuseForm() {
   } catch (e) { box.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
-async function submitExcuse() {
+async function submitExcuse(el) {
   var batch = (document.getElementById('ex-batch') || {}).value;
   var reason = ((document.getElementById('ex-reason') || {}).value || '').trim();
   var fileEl = document.getElementById('ex-file');
   if (!batch) { toast('اختر المجموعة', 'err'); return; }
   if (reason.length < 8) { toast('اكتب سبباً أوضح', 'err'); return; }
-  try {
+  await runBtn(el, async function () {
     var path = null;
     if (fileEl && fileEl.files && fileEl.files[0]) path = await API.uploadExcuseFile(fileEl.files[0]);
     await API.submitExcuse({ p_batch_id: batch, p_session_id: null, p_reason: reason, p_file: path });
     toast('تم إرسال طلب العذر', 'ok');
-    renderExcuseForm();
-  } catch (e) { toast(UI.humanError(e), 'err'); }
+    setTimeout(renderExcuseForm, 500);
+    return true;
+  }, 'تم الإرسال ✓');
 }
 
 /* ═══════════════ Volunteer ═══════════════ */
@@ -1063,7 +1135,7 @@ async function openBatchDetail(batchId) {
       '<button class="btn btn-teal btn-sm" onclick="issueCerts()"><i class="ph-bold ph-certificate"></i> إصدار الشهادات</button></div>' +
       '<div id="session-qr" class="hidden mb-4"></div>' +
       '<div class="sec-t">كشف الطلاب — حضور اليوم</div><div id="vbd-roster">' + rosterHTML(isStaff) + '</div>' +
-      (_batchStudents.length ? '<button class="btn btn-teal btn-big w-full mt-3" onclick="saveAttendance()"><i class="ph-bold ph-floppy-disk"></i> حفظ الحضور</button>' +
+      (_batchStudents.length ? '<button class="btn btn-teal btn-big w-full mt-3" data-act="saveAttendance" data-busy-label="جاري الحفظ"><i class="ph-bold ph-floppy-disk"></i> حفظ الحضور</button>' +
         '<button class="btn btn-soft btn-mid w-full mt-2" onclick="openReportModal()">تقرير المحاضرة</button>' : '') +
       '</div>';
     document.getElementById('app').appendChild(screen);
@@ -1117,20 +1189,21 @@ async function startTodaySession() {
   } catch (e) { toast(UI.humanError(e), 'err'); }
 }
 
-async function saveAttendance() {
+async function saveAttendance(el) {
   if (!_currentBatch) return;
   var keys = Object.keys(_attendanceState);
   var missing = _batchStudents.length - keys.length;
-  var go = async function () {
-    try {
+  var go = function () {
+    return runBtn(el, async function () {
       if (!_currentSession) _currentSession = await API.startSession(_currentBatch.id);
       var records = keys.map(function (sid) { return { student_id: sid, status: _attendanceState[sid] }; });
       await API.saveAttendance(_currentSession.id, records);
       UI.fireConfetti(36);
       toast(t('attendanceSaved') + ' · ' + keys.length + ' طالب', 'ok');
       API.invalidate();
-      pop();
-    } catch (e) { toast(UI.humanError(e), 'err'); }
+      setTimeout(pop, 460);
+      return true;
+    }, 'تم الحفظ ✓');
   };
   if (!keys.length) { toast('حدّد حالة طالب واحد على الأقل', 'err'); return; }
   if (missing > 0) {
@@ -1408,21 +1481,22 @@ function paintUsers(profiles) {
       '<div class="text-[11px] text-muted">' + esc(roles[p.role] || p.role) + ' · ' + esc((p.branches && p.branches.name_ar) || '—') + '</div>' +
       '<div class="text-[10px] text-muted" dir="ltr">' + esc(p.email || '') + '</div></div>' +
       '<div class="flex flex-col gap-1 items-end"><span class="status-chip ' + (p.status === 'active' ? 'st-a' : 'st-r') + '">' + esc(p.status === 'active' ? 'نشط' : 'موقوف') + '</span>' +
-      (canEdit ? '<button class="chip text-[10px]" onclick="changeUserRole(\'' + esc(p.id) + '\',\'' + esc(p.full_name) + '\',\'' + esc(p.role) + '\')">دور</button>' +
+      (canEdit ? '<button class="chip text-[10px]" data-act="changeUserRole" data-arg1="' + esc(p.id) + '" data-arg2="' + esc(p.full_name) + '" data-arg3="' + esc(p.role) + '">دور</button>' +
         '<button class="chip text-[10px]" onclick="toggleUserStatus(\'' + esc(p.id) + '\',\'' + esc(p.status) + '\')">' + (p.status === 'active' ? 'إيقاف' : 'تفعيل') + '</button>' : '') +
       '</div></div>';
   }).join('');
 }
 
-function changeUserRole(userId, userName, currentRole) {
+function changeUserRole(userId, userName, currentRole, el) {
   var next = currentRole === 'student' ? 'volunteer' : 'student';
   var labels = { student: 'طالب', volunteer: 'متطوع' };
-  UI.showConfirm('تغيير دور «' + userName + '»؟', 'من ' + labels[currentRole] + ' إلى ' + labels[next] + '. لا يمكن تعيين مشرف من الواجهة.', async function () {
-    try {
+  UI.showConfirm('تغيير دور «' + userName + '»؟', 'من ' + labels[currentRole] + ' إلى ' + labels[next] + '. لا يمكن تعيين مشرف من الواجهة.', function () {
+    return runBtn(el, async function () {
       await API.changeRole(userId, next);
       toast('تم التحديث ✓', 'ok');
-      renderAdminUsers();
-    } catch (e) { toast(UI.humanError(e), 'err'); }
+      setTimeout(renderAdminUsers, 460);
+      return true;
+    }, 'تم ✓');
   }, { danger: false, yesLabel: 'تعيين ك' + labels[next] });
 }
 
@@ -1568,16 +1642,17 @@ function renderBroadcast() {
     '<select class="inp" id="bc-type"><option value="announcement">إعلان</option><option value="postponed">تأجيل عام</option></select>' +
     '<input class="inp" id="bc-title" placeholder="العنوان">' +
     '<textarea class="inp" id="bc-msg" rows="3" placeholder="نص الرسالة"></textarea>' +
-    '<button class="btn btn-primary btn-mid" onclick="sendBroadcast()">إرسال البث</button></div>';
+    '<button class="btn btn-primary btn-mid" data-act="sendBroadcast" data-busy-label="جاري الإرسال">إرسال البث</button></div>';
 }
 
-async function sendBroadcast() {
+async function sendBroadcast(el) {
   var scope = (document.getElementById('bc-scope') || {}).value;
   var sid = scope === 'branch' ? (document.getElementById('bc-branch') || {}).value : null;
-  try {
+  await runBtn(el, async function () {
     var n = await API.broadcast(scope, sid, (document.getElementById('bc-type') || {}).value, (document.getElementById('bc-title') || {}).value, (document.getElementById('bc-msg') || {}).value);
     toast('وصل إلى ' + n + ' مستخدم', 'ok');
-  } catch (e) { toast(UI.humanError(e), 'err'); }
+    return true;
+  }, 'تم البث ✓');
 }
 
 async function renderAnalytics() {
@@ -1615,6 +1690,35 @@ async function renderAnalytics() {
   } catch (e) { body.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e), t('retry'), 'renderAnalytics()'); }
 }
 
+/* ═══════════════ Native shell wiring ═══════════════ */
+function wireNativeShell() {
+  if (window.RTCNative) {
+    /* زر الرجوع في أندرويد: pop داخل التطبيق، أو خروج من الشاشة الرئيسية */
+    RTCNative.onBack(function () {
+      var sheet = document.querySelector('.modal-bg.open');
+      if (sheet) { sheet.classList.remove('open'); setTimeout(function () { sheet.remove(); }, 280); return true; }
+      if (navStack.length) { pop(); return true; }
+      var role = (CURRENT_PROFILE && CURRENT_PROFILE.role) || 'student';
+      var home = role === 'volunteer' ? 'v-home' : role === 'admin' ? 'a-home' : 's-home';
+      if (currentScreenId !== home && currentScreenId !== 'onboarding' && currentScreenId !== 'splash') { routeToRoleHome(); return true; }
+      return false; /* اخرج من التطبيق */
+    });
+    RTCNative.onResume(function () { API.invalidate(); renderScreen(currentScreenId); });
+    RTCNative.syncStatusBar();
+  }
+
+  /* سحب للتحديث على كل شاشة لها جسم قابل للتمرير */
+  if (window.RTCMotion) {
+    document.querySelectorAll('.scr-body, .scr-body-full').forEach(function (sc) {
+      RTCMotion.bindPTR(sc, async function () {
+        API.invalidate();
+        if (CURRENT_USER) { try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {} }
+        renderScreen(currentScreenId);
+      });
+    });
+  }
+}
+
 /* ═══════════════ Init ═══════════════ */
 window.addEventListener('online', function () { toast(t('online'), 'ok'); });
 window.addEventListener('offline', function () { toast(t('offline'), 'warn'); });
@@ -1622,6 +1726,7 @@ window.addEventListener('offline', function () { toast(t('offline'), 'warn'); })
 document.addEventListener('DOMContentLoaded', async function () {
   applyDarkMode();
   applyI18nNav();
+  wireNativeShell();
 
   if (!window.supabaseClient) {
     setTimeout(function () { if (!_authHandled) { showScreenEl('onboarding'); nextOnbStep(1); } }, 900);
@@ -1651,6 +1756,6 @@ document.addEventListener('DOMContentLoaded', async function () {
   }, 800);
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js?v=9.0.0').catch(function () {});
+    navigator.serviceWorker.register('./sw.js?v=10.0.0').catch(function () {});
   }
 });

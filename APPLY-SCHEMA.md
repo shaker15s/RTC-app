@@ -1,42 +1,73 @@
-# تطبيق السكيمة + دخول Google
+# تطبيق السكيمة + دخول Google (v10)
 
 ## أ) SQL — شغّل بالترتيب
 
+من Supabase → **SQL Editor** → New query → Run، واحد ورا التاني:
+
 1. `supabase/FIX-verify-then-rerun.sql`
 2. `supabase/migrations/20260813120000_production_v9.sql`
+3. `supabase/FIX-v10-seats.sql` — دالة `batch_seat_counts` (عدّاد المقاعد `12/30` بدون أي بيانات شخصية)
+4. `supabase/FIX-relations-and-roles.sql` — العلاقات (FKs) + طلبات ترقية الدور + «مشرف يعيّن مشرف»
 
-## ب) ليه ظهر `Sandbox Not Found`؟
+> **ملاحظة v10:** ملف الميجريشن الكبير كان بيفشل لو سياسة `avatars_update` موجودة من تشغيلة سابقة.
+> اتصلّح دلوقتي بإضافة `DROP POLICY IF EXISTS avatars_update` قبل الإنشاء، فالملف بقى آمن للتشغيل أكتر من مرة.
 
-ده **مش** مشكلة Git ولا برانش. التغييرات مرفوعة على:
+الملفات ٣ و٤ كمان idempotent — تقدر تعيد تشغيلها من غير قلق.
 
-`https://github.com/shaker15s/RTC-app/tree/arena/019ffa07-rtc-app`
+---
 
-الرسالة دي من استضافة Arena/e2b: Google رجّع المتصفح على رابط معاينة **قديم** (`…iw7robcdzs7qk9o0gai7g…`) بعد ما الساندبوكس اتقفل.
+## ب) روابط الدخول (Google OAuth)
 
-روابط `*.e2b.app` مؤقتة. متخلّيهاش Site URL دائم في Supabase.
+التطبيق المنشور على:
 
-### اعمل كده الآن
+```
+https://shaker15s.github.io/RTC-app/
+```
 
-1. افتح التطبيق من المكان اللي هتستخدمه فعلاً:
-   - تشغيل محلي: `http://localhost:5173`
-   - أو أي استضافة ثابتة عندك
-2. انسخ الرابط من **شريط عنوان المتصفح** (نفس التبويب اللي فيه التطبيق).
-3. Supabase → **Authentication** → **URL Configuration**:
-   - **Site URL** = الرابط ده (مثلاً `http://localhost:5173`)
-   - **Redirect URLs** أضف:
-     ```
-     http://localhost:5173
-     http://localhost:5173/
-     http://127.0.0.1:5173
-     http://127.0.0.1:5173/
-     http://localhost:3000
-     http://localhost:3000/
-     ```
-     ولو هتفتح من معاينة Arena، أضف رابط المعاينة **الحالي من شريط العنوان** (مش الرابط القديم).
-4. احفظ، ارجع لنفس تبويب التطبيق، سجّل بـ Google من هناك.
+Supabase → **Authentication** → **URL Configuration**:
 
-على شاشة الدخول التطبيق بيعرض الرابط المطلوب نسخه لـ Redirect URLs.
+- **Site URL**
+  ```
+  https://shaker15s.github.io/RTC-app/
+  ```
+- **Redirect URLs** — أضف الاتنين:
+  ```
+  https://shaker15s.github.io/RTC-app/
+  org.resala.rtc.masar://auth
+  ```
 
-## ج) المشرف
+قواعد مهمة:
 
-بعد SQL، دخول `shakerabdallah66@gmail.com` يثبّته أدمن. الباقي طلاب.
+- **متحطّش** روابط معاينة مؤقتة (`*.e2b.app`) ولا `localhost` في **Site URL**. دي روابط بتموت مع الساندبوكس،
+  ولما Google يرجّع عليها بعد ما تقفل هتشوف `Sandbox Not Found`. لو محتاج تجرب محلياً، ضيف الرابط
+  في **Redirect URLs** بس وسيب Site URL على رابط Pages.
+- السطر `org.resala.rtc.masar://auth` هو اللي بيخلّي الدخول يرجّع جوّه التطبيق الأصلي (أندرويد/iOS).
+- التطبيق **مش** بيخزّن توكنات OAuth بنفسه؛ مكتبة Supabase هي اللي بتتولى الجلسة.
+
+في Google Cloud Console → OAuth client، تأكد إن الـ redirect URI بتاع Supabase موجود:
+
+```
+https://jwhedqmszbdougsqqmhv.supabase.co/auth/v1/callback
+```
+
+---
+
+## ج) الأدوار والمشرف
+
+- كل حساب جديد = **طالب** افتراضياً.
+- المشرف الوحيد اللي بيتثبّت من SQL: `shakerabdallah66@gmail.com`.
+  أول ما يسجّل دخول يبقى `admin` تلقائياً، ومحدش يقدر يعطّله أو ينزّل صلاحيته.
+- **الواجهة عمرها ما بتعيّن أدمن.** زرار الدور في لوحة الإدارة بيبدّل بين طالب ومتطوع بس.
+- لو محتاج مشرف إضافي: المشرف الحالي يستخدم RPC `grant_admin(user_id)`
+  (موجود في `FIX-relations-and-roles.sql`)، وحارس `protect_founder` بيمنع أي كتابة مباشرة لدور `admin`.
+- الطالب يقدر يطلب ترقية لمتطوع عبر `request_role_upgrade(reason)`، والمشرف يراجع بـ `review_role_request(id, approve, note)`.
+
+---
+
+## د) بعد النشر
+
+النشر بيحصل تلقائياً من GitHub Actions عند أي push على `main`.
+بعد أي إصدار جديد امسح كاش المتصفح أو اعمل Hard Reload، لأن الـ Service Worker
+بيتحدّث لنسخة جديدة (`rtc-v10.0.0`).
+
+للبناء الأصلي (Android / iOS) راجع `docs/STORE-AND-NATIVE.md`.

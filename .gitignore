@@ -15,6 +15,9 @@ build/
 styles.css
 *.min.js
 
+# Store icons (regenerate with: node generate-icons.js)
+store-assets/
+
 # Generated native icons (PWA icons at repo root are tracked)
 android/app/src/main/res/mipmap-*/ic_launcher*.png
 

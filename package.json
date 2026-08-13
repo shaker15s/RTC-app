@@ -1,16 +1,19 @@
 {
   "name": "rtc-app",
-  "version": "9.0.0",
+  "version": "10.0.0",
   "description": "مسار RTC — نظام متابعة مستفيدي الكورسات المجانية",
   "main": "index.html",
   "scripts": {
     "dev": "npx -y http-server -p 5173",
+    "build": "node scripts/build.js",
+    "serve:dist": "npx serve dist",
     "cap:add": "npx cap add android && npx cap add ios",
-    "cap:sync": "npx cap sync",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:patch": "node scripts/patch-native.js",
     "cap:open:android": "npx cap open android",
     "cap:open:ios": "npx cap open ios",
-    "build:android": "npx cap sync && npx cap run android",
-    "build:ios": "npx cap sync && npx cap run ios",
+    "build:android": "npm run cap:sync && npm run cap:patch && npx cap run android",
+    "build:ios": "npm run cap:sync && npm run cap:patch && npx cap run ios",
     "icons": "node generate-icons.js"
   },
   "devDependencies": {
