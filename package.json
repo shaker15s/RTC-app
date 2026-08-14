@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run build && serve dist -l tcp://0.0.0.0:5173",
     "build": "node scripts/build.js",
-    "test": "node tests/test-login-fix.js && node tests/test-security-v100.js",
+    "test": "node tests/test-login-fix.js && node tests/test-security-v100.js && node tests/test-rpc-contract.js",
     "test:security": "node tests/test-security-v100.js",
     "audit": "npm audit --audit-level=moderate",
     "serve:dist": "serve dist -l tcp://0.0.0.0:5173",
@@ -21,7 +21,10 @@
     "build:ios": "npm run cap:sync && npx cap open ios",
     "icons": "node generate-icons.js",
     "firebase:check": "node scripts/validate-firebase.js",
-    "pages:bundle": "npm run build && node scripts/export-pages-root.js"
+    "pages:bundle": "npm run build && node scripts/export-pages-root.js",
+    "test:rpc": "node tests/test-rpc-contract.js",
+    "rpc:report": "node scripts/rpc-report.js",
+    "db:verify": "node scripts/verify-live-rpcs.js"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",
