@@ -26,31 +26,31 @@
 | # | اسم الدالة | الاستدعاء في الكود | المعاملات | نوع الإرجاع | الأدوار المسموحة | الصلاحيات (Grants) | ملف الـ Migration |
 |---|---|---|---|---|---|---|---|
 | 1 | `get_my_profile` | `js/api.js:121` | لا توجد | `JSONB` | authenticated (مالك الحساب) | `authenticated` | `20260813190000_v100_platform.sql` |
-| 2 | `ensure_my_profile` | `js/api.js:160` | `p_full_name TEXT`, `p_phone TEXT`, `p_branch UUID` | `JSONB` | authenticated (مالك الحساب) | `authenticated` | `20260813190000_v100_platform.sql` |
+| 2 | `ensure_my_profile` | `js/api.js:160` | `p_full_name TEXT`, `p_phone TEXT`, `p_branch UUID` | `VOID` | authenticated (مالك الحساب) | `authenticated` | `20260813190000_v100_platform.sql` |
 | 3 | `batch_roster` | `js/api.js:255` | `p_batch_id UUID` | `TABLE (...)` | instructor (مالك الدفعة) / admin | `authenticated` | `20260813120000_production_v9.sql` |
-| 4 | `admin_list_profiles` | `js/api.js:276` | لا توجد | `TABLE (...)` | admin فقط | `authenticated` | `20260813190000_v100_platform.sql` |
+| 4 | `admin_list_profiles` | `js/api.js:276` | لا توجد | `JSONB` | admin فقط | `authenticated` | `20260813190000_v100_platform.sql` |
 | 5 | `batch_seat_counts` | `js/api.js:378` | `p_batch_ids UUID[]` | `TABLE (...)` | authenticated | `authenticated` | `20260813190000_v100_platform.sql` |
-| 6 | `update_branch_directory` | `js/api.js:487` | `p_branch_id UUID`, `p_payload JSONB` | `JSONB` | admin فقط | `authenticated` | `20260813190000_v100_platform.sql` |
+| 6 | `update_branch_directory` | `js/api.js:487` | `p_branch_id UUID`, `p_payload JSONB` | `VOID` | admin فقط | `authenticated` | `20260813190000_v100_platform.sql` |
 | 7 | `join_batch` | `js/api.js:506` | `p_batch_id UUID` | `JSONB` | authenticated (student) | `authenticated` | `20260813120000_production_v9.sql` |
 | 8 | `start_session` | `js/api.js:507` | `p_batch_id UUID`, `p_title TEXT` | `JSONB` | instructor (مالك الدفعة) / admin | `authenticated` | `20260813120000_production_v9.sql` |
 | 9 | `student_check_in` | `js/api.js:508` | `p_code TEXT` | `JSONB` | authenticated (student مسجل) | `authenticated` | `20260813120000_production_v9.sql` |
 | 10 | `record_session_attendance` | `js/api.js:509` | `p_session_id UUID`, `p_records JSONB` | `JSONB` | instructor (مالك الجلسة) / admin | `authenticated` | `20260813120000_production_v9.sql` |
-| 11 | `close_session` | `js/api.js:510` | `p_session_id UUID` | `JSONB` | instructor (مالك الجلسة) / admin | `authenticated` | `20260813120000_production_v9.sql` |
+| 11 | `close_session` | `js/api.js:510` | `p_session_id UUID` | `VOID` | instructor (مالك الجلسة) / admin | `authenticated` | `20260813120000_production_v9.sql` |
 | 12 | `issue_certificates` | `js/api.js:511` | `p_batch_id UUID` | `JSONB` | instructor (مالك الدفعة) / admin | `authenticated` | `20260813190000_v100_platform.sql` |
-| 13 | `change_user_role` | `js/api.js:512` | `p_user_id UUID`, `p_role TEXT` | `JSONB` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
-| 14 | `set_user_status` | `js/api.js:513` | `p_user_id UUID`, `p_status TEXT` | `JSONB` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
-| 15 | `assign_instructor` | `js/api.js:514` | `p_batch_id UUID`, `p_instructor_id UUID` | `JSONB` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
+| 13 | `change_user_role` | `js/api.js:512` | `p_user_id UUID`, `p_role TEXT` | `VOID` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
+| 14 | `set_user_status` | `js/api.js:513` | `p_user_id UUID`, `p_status TEXT` | `VOID` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
+| 15 | `assign_instructor` | `js/api.js:514` | `p_batch_id UUID`, `p_instructor_id UUID` | `VOID` | admin فقط | `authenticated` | `20260813120000_production_v9.sql` |
 | 16 | `verify_certificate` | `js/api.js:515`, `js/verify.js:35` | `p_serial TEXT` | `TABLE (...)` | عام / للجميع | `anon`, `authenticated` | `20260813190000_v100_platform.sql` |
 | 17 | `get_leaderboard` | `js/api.js:516` | لا توجد | `TABLE (...)` | authenticated | `authenticated` | `20260814100000_repair_leaderboard_and_rtc_link.sql` |
 | 18 | `submit_excuse` | `js/api.js:517` | `p_batch_id UUID`, `p_session_id UUID`, `p_reason TEXT`, `p_file TEXT` | `UUID` | authenticated (طالب مسجل في الدفعة) | `authenticated` | `20260813190000_v100_platform.sql` |
 | 19 | `review_excuse` | `js/api.js:518` | `p_excuse_id UUID`, `p_status TEXT`, `p_note TEXT` | `VOID` | instructor (مالك الدفعة) / admin | `authenticated` | `20260813190000_v100_platform.sql` |
-| 20 | `submit_session_report` | `js/api.js:519` | `p_session_id UUID`, `p_summary TEXT`, `p_und INT`, `p_eng INT` | `UUID` | instructor (مالك الجلسة) / admin | `authenticated` | `20260813190000_v100_platform.sql` |
+| 20 | `submit_session_report` | `js/api.js:519` | `p_session_id UUID`, `p_summary TEXT`, `p_und INT`, `p_eng INT` | `VOID` | instructor (مالك الجلسة) / admin | `authenticated` | `20260813190000_v100_platform.sql` |
 | 21 | `submit_course_rating` | `js/api.js:520` | `p_course_id UUID`, `p_rating INT`, `p_comment TEXT` | `VOID` | authenticated (طالب مسجل في كورس) | `authenticated` | `20260813190000_v100_platform.sql` |
-| 22 | `broadcast_notice` | `js/api.js:522` | `p_scope TEXT`, `p_scope_id UUID`, `p_type TEXT`, `p_title TEXT`, `p_message TEXT` | `JSONB` | instructor (لدفعته) / admin (عام/فرع/دفعة) | `authenticated` | `20260813190000_v100_platform.sql` |
+| 22 | `broadcast_notice` | `js/api.js:522` | `p_scope TEXT`, `p_scope_id UUID`, `p_type TEXT`, `p_title TEXT`, `p_message TEXT` | `INT` | instructor (لدفعته) / admin (عام/فرع/دفعة) | `authenticated` | `20260813190000_v100_platform.sql` |
 | 23 | `add_private_note` | `js/api.js:524` | `p_student_id UUID`, `p_body TEXT` | `UUID` | instructor للطالب المسجل عنده / admin | `authenticated` | `20260813190000_v100_platform.sql` |
-| 24 | `claim_social_badge` | `js/api.js:525` | لا توجد | `JSONB` | authenticated | `authenticated` | `20260813120000_production_v9.sql` |
+| 24 | `claim_social_badge` | `js/api.js:525` | لا توجد | `VOID` | authenticated | `authenticated` | `20260813120000_production_v9.sql` |
 | 25 | `disable_my_push_devices` | `js/api.js:526` | لا توجد | `VOID` | authenticated | `authenticated` | `20260813190000_v100_platform.sql` |
-| 26 | `register_push_device` | `js/api.js:528` | `p_token TEXT`, `p_platform TEXT`, `p_version TEXT` | `JSONB` | authenticated | `authenticated` | `20260813190000_v100_platform.sql` |
+| 26 | `register_push_device` | `js/api.js:528` | `p_token TEXT`, `p_platform TEXT`, `p_version TEXT` | `VOID` | authenticated | `authenticated` | `20260813190000_v100_platform.sql` |
 
 ---
 

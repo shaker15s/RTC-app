@@ -8,13 +8,13 @@
 DROP FUNCTION IF EXISTS public.patch_roster(uuid, uuid);
 DROP FUNCTION IF EXISTS public.patch_roster(uuid);
 
--- 2. Helper validation functions
+-- 2. Helper validation functions (used across RLS policies — preserve return types)
 CREATE OR REPLACE FUNCTION public.current_role()
-RETURNS VARCHAR LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE r VARCHAR;
+RETURNS TEXT LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE r TEXT;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN 'anon'; END IF;
-  SELECT role INTO r FROM public.profiles WHERE id = auth.uid();
+  SELECT role::TEXT INTO r FROM public.profiles WHERE id = auth.uid();
   RETURN COALESCE(r, 'student');
 END $$;
 
@@ -39,7 +39,7 @@ END $$;
 CREATE OR REPLACE FUNCTION public.is_instructor(_batch UUID)
 RETURNS BOOLEAN LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF auth.uid() IS NULL THEN RETURN FALSE; END IF;
+  IF auth.uid() IS NULL OR _batch IS NULL THEN RETURN FALSE; END IF;
   RETURN EXISTS (
     SELECT 1 FROM public.batches WHERE id = _batch AND instructor_id = auth.uid()
   );
@@ -83,6 +83,7 @@ END $$;
 -- 3. The 26 Core Contract RPCs
 
 -- [RPC 1] get_my_profile
+DROP FUNCTION IF EXISTS public.get_my_profile();
 CREATE OR REPLACE FUNCTION public.get_my_profile()
 RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -123,12 +124,13 @@ BEGIN
 END $$;
 
 -- [RPC 2] ensure_my_profile
+DROP FUNCTION IF EXISTS public.ensure_my_profile(TEXT, TEXT, UUID);
 CREATE OR REPLACE FUNCTION public.ensure_my_profile(
   p_full_name TEXT DEFAULT NULL,
   p_phone TEXT DEFAULT NULL,
   p_branch UUID DEFAULT NULL
 )
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   usr RECORD;
   clean_name TEXT;
@@ -157,11 +159,10 @@ BEGIN
     phone = CASE WHEN clean_phone IS NOT NULL THEN clean_phone ELSE public.profiles.phone END,
     branch_id = CASE WHEN p_branch IS NOT NULL THEN p_branch ELSE public.profiles.branch_id END,
     updated_at = now();
-
-  RETURN public.get_my_profile();
 END $$;
 
 -- [RPC 3] batch_roster
+DROP FUNCTION IF EXISTS public.batch_roster(UUID);
 CREATE OR REPLACE FUNCTION public.batch_roster(p_batch_id UUID)
 RETURNS TABLE (
   enrollment_id UUID,
@@ -169,10 +170,10 @@ RETURNS TABLE (
   full_name TEXT,
   avatar_url TEXT,
   phone TEXT,
+  sessions_done INT,
   points INT,
   streak INT,
-  attendance_pct INT,
-  sessions_done INT
+  attendance_pct INT
 ) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NOT (public.is_admin() OR public.is_instructor(p_batch_id)) THEN
@@ -184,10 +185,10 @@ BEGIN
            p.full_name,
            p.avatar_url,
            p.phone,
+           COALESCE(e.sessions_done, 0)::INT,
            COALESCE(p.points, 0)::INT,
            COALESCE(p.streak, 0)::INT,
-           COALESCE(e.attendance_pct, 0)::INT,
-           COALESCE(e.sessions_done, 0)::INT
+           COALESCE(e.attendance_pct, 0)::INT
       FROM public.enrollments e
       JOIN public.profiles p ON p.id = e.student_id
      WHERE e.batch_id = p_batch_id
@@ -196,37 +197,31 @@ BEGIN
 END $$;
 
 -- [RPC 4] admin_list_profiles
+DROP FUNCTION IF EXISTS public.admin_list_profiles();
 CREATE OR REPLACE FUNCTION public.admin_list_profiles()
-RETURNS TABLE (
-  id UUID,
-  full_name TEXT,
-  role VARCHAR,
-  status VARCHAR,
-  email VARCHAR,
-  phone TEXT,
-  points INT,
-  branch_id UUID,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ,
-  branch_name TEXT
-) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  result JSONB;
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION 'unauthorized'; END IF;
-  RETURN QUERY
-    SELECT p.id,
-           p.full_name,
-           p.role,
-           p.status,
-           p.email,
-           p.phone,
-           COALESCE(p.points, 0)::INT AS points,
-           p.branch_id,
-           p.avatar_url,
-           p.created_at,
-           COALESCE(b.name_ar, b.name_en, '')::TEXT AS branch_name
-      FROM public.profiles p
-      LEFT JOIN public.branches b ON b.id = p.branch_id
-     ORDER BY p.created_at DESC;
+  SELECT COALESCE(jsonb_agg(
+    jsonb_build_object(
+      'id', p.id,
+      'full_name', p.full_name,
+      'role', p.role,
+      'status', p.status,
+      'email', p.email,
+      'phone', p.phone,
+      'points', COALESCE(p.points, 0),
+      'branch_id', p.branch_id,
+      'avatar_url', p.avatar_url,
+      'created_at', p.created_at,
+      'branch_name', COALESCE(b.name_ar, b.name_en, '')
+    ) ORDER BY p.created_at DESC
+  ), '[]'::jsonb) INTO result
+  FROM public.profiles p
+  LEFT JOIN public.branches b ON b.id = p.branch_id;
+  RETURN result;
 END $$;
 
 -- [RPC 5] batch_seat_counts
@@ -250,8 +245,9 @@ RETURNS TABLE (
 $$;
 
 -- [RPC 6] update_branch_directory
+DROP FUNCTION IF EXISTS public.update_branch_directory(UUID, JSONB);
 CREATE OR REPLACE FUNCTION public.update_branch_directory(p_branch_id UUID, p_payload JSONB)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_name_ar TEXT; v_name_en TEXT; v_city TEXT; v_address TEXT;
   v_fb TEXT; v_wa TEXT; v_hotline TEXT; v_sort INT;
@@ -282,10 +278,10 @@ BEGIN
    WHERE id = p_branch_id;
 
   PERFORM public.write_audit('update_branch', 'branches', p_branch_id::text, p_payload);
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 7] join_batch
+DROP FUNCTION IF EXISTS public.join_batch(UUID);
 CREATE OR REPLACE FUNCTION public.join_batch(p_batch_id UUID)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -324,6 +320,7 @@ BEGIN
 END $$;
 
 -- [RPC 8] start_session
+DROP FUNCTION IF EXISTS public.start_session(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.start_session(p_batch_id UUID, p_title TEXT DEFAULT NULL)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -350,6 +347,7 @@ BEGIN
 END $$;
 
 -- [RPC 9] student_check_in
+DROP FUNCTION IF EXISTS public.student_check_in(TEXT);
 CREATE OR REPLACE FUNCTION public.student_check_in(p_code TEXT)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -390,6 +388,7 @@ BEGIN
 END $$;
 
 -- [RPC 10] record_session_attendance
+DROP FUNCTION IF EXISTS public.record_session_attendance(UUID, JSONB);
 CREATE OR REPLACE FUNCTION public.record_session_attendance(p_session_id UUID, p_records JSONB)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -441,8 +440,9 @@ BEGIN
 END $$;
 
 -- [RPC 11] close_session
+DROP FUNCTION IF EXISTS public.close_session(UUID);
 CREATE OR REPLACE FUNCTION public.close_session(p_session_id UUID)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_batch UUID;
 BEGIN
   SELECT batch_id INTO v_batch FROM public.sessions WHERE id = p_session_id;
@@ -458,11 +458,10 @@ BEGIN
   ) WHERE id = v_batch;
 
   PERFORM public.write_audit('close_session', 'sessions', p_session_id::text);
-
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 12] issue_certificates
+DROP FUNCTION IF EXISTS public.issue_certificates(UUID);
 CREATE OR REPLACE FUNCTION public.issue_certificates(p_batch_id UUID)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -504,8 +503,9 @@ BEGIN
 END $$;
 
 -- [RPC 13] change_user_role
+DROP FUNCTION IF EXISTS public.change_user_role(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.change_user_role(p_user_id UUID, p_role TEXT)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION 'unauthorized'; END IF;
   IF p_role NOT IN ('student','volunteer','admin') THEN
@@ -514,13 +514,12 @@ BEGIN
 
   UPDATE public.profiles SET role = p_role, updated_at = now() WHERE id = p_user_id;
   PERFORM public.write_audit('change_role', 'profiles', p_user_id::text, jsonb_build_object('role', p_role));
-
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 14] set_user_status
+DROP FUNCTION IF EXISTS public.set_user_status(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.set_user_status(p_user_id UUID, p_status TEXT)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION 'unauthorized'; END IF;
   IF p_status NOT IN ('active','suspended','inactive') THEN
@@ -529,29 +528,27 @@ BEGIN
 
   UPDATE public.profiles SET status = p_status, updated_at = now() WHERE id = p_user_id;
   PERFORM public.write_audit('set_status', 'profiles', p_user_id::text, jsonb_build_object('status', p_status));
-
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 15] assign_instructor
+DROP FUNCTION IF EXISTS public.assign_instructor(UUID, UUID);
 CREATE OR REPLACE FUNCTION public.assign_instructor(p_batch_id UUID, p_instructor_id UUID)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NOT public.is_admin() THEN RAISE EXCEPTION 'unauthorized'; END IF;
 
   UPDATE public.batches SET instructor_id = p_instructor_id WHERE id = p_batch_id;
   PERFORM public.write_audit('assign_instructor', 'batches', p_batch_id::text, jsonb_build_object('instructor_id', p_instructor_id));
-
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 16] verify_certificate
+DROP FUNCTION IF EXISTS public.verify_certificate(TEXT);
 CREATE OR REPLACE FUNCTION public.verify_certificate(p_serial TEXT)
 RETURNS TABLE (
   is_valid BOOLEAN,
   student_name TEXT,
   course_title TEXT,
-  issued_date DATE,
+  issued_date TIMESTAMPTZ,
   serial TEXT
 ) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -586,6 +583,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 -- [RPC 18] submit_excuse
+DROP FUNCTION IF EXISTS public.submit_excuse(UUID, UUID, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.submit_excuse(
   p_batch_id UUID,
   p_session_id UUID DEFAULT NULL,
@@ -617,6 +615,7 @@ BEGIN
 END $$;
 
 -- [RPC 19] review_excuse
+DROP FUNCTION IF EXISTS public.review_excuse(UUID, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.review_excuse(p_excuse_id UUID, p_status TEXT, p_note TEXT DEFAULT '')
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -648,11 +647,11 @@ BEGIN
 END $$;
 
 -- [RPC 20] submit_session_report
+DROP FUNCTION IF EXISTS public.submit_session_report(UUID, TEXT, INT, INT);
 CREATE OR REPLACE FUNCTION public.submit_session_report(p_session_id UUID, p_summary TEXT, p_und INT, p_eng INT)
-RETURNS UUID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_batch UUID;
-  new_id UUID;
   clean_summary TEXT := trim(COALESCE(p_summary, ''));
 BEGIN
   SELECT batch_id INTO v_batch FROM public.sessions WHERE id = p_session_id;
@@ -674,13 +673,11 @@ BEGIN
     understanding_score = EXCLUDED.understanding_score,
     engagement_score = EXCLUDED.engagement_score,
     instructor_id = auth.uid(),
-    created_at = now()
-  RETURNING id INTO new_id;
-
-  RETURN new_id;
+    created_at = now();
 END $$;
 
 -- [RPC 21] submit_course_rating
+DROP FUNCTION IF EXISTS public.submit_course_rating(UUID, INT, TEXT);
 CREATE OR REPLACE FUNCTION public.submit_course_rating(p_course_id UUID, p_rating INT, p_comment TEXT DEFAULT '')
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE clean_comment TEXT := left(trim(COALESCE(p_comment, '')), 1000);
@@ -702,6 +699,7 @@ BEGIN
 END $$;
 
 -- [RPC 22] broadcast_notice
+DROP FUNCTION IF EXISTS public.broadcast_notice(TEXT, UUID, TEXT, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.broadcast_notice(
   p_scope TEXT,
   p_scope_id UUID DEFAULT NULL,
@@ -709,7 +707,7 @@ CREATE OR REPLACE FUNCTION public.broadcast_notice(
   p_title TEXT DEFAULT 'تنبيه مسار',
   p_message TEXT DEFAULT ''
 )
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS INT LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   clean_title TEXT := trim(COALESCE(p_title, ''));
   clean_message TEXT := trim(COALESCE(p_message, ''));
@@ -745,10 +743,11 @@ BEGIN
     RAISE EXCEPTION 'نطاق تنبيه غير معروف';
   END IF;
 
-  RETURN jsonb_build_object('success', true, 'count', inserted_count);
+  RETURN inserted_count;
 END $$;
 
 -- [RPC 23] add_private_note
+DROP FUNCTION IF EXISTS public.add_private_note(UUID, TEXT);
 CREATE OR REPLACE FUNCTION public.add_private_note(p_student_id UUID, p_body TEXT)
 RETURNS UUID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE new_id UUID; clean_body TEXT := trim(COALESCE(p_body, ''));
@@ -766,17 +765,18 @@ BEGIN
 END $$;
 
 -- [RPC 24] claim_social_badge
+DROP FUNCTION IF EXISTS public.claim_social_badge();
 CREATE OR REPLACE FUNCTION public.claim_social_badge()
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_user UUID := auth.uid();
 BEGIN
   IF v_user IS NULL THEN RAISE EXCEPTION 'auth required'; END IF;
   PERFORM public.apply_rule(v_user, 'SOCIAL_SHARE', v_user);
   PERFORM public.award_badge(v_user, 'social');
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- [RPC 25] disable_my_push_devices
+DROP FUNCTION IF EXISTS public.disable_my_push_devices();
 CREATE OR REPLACE FUNCTION public.disable_my_push_devices()
 RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -785,8 +785,9 @@ BEGIN
 END $$;
 
 -- [RPC 26] register_push_device
+DROP FUNCTION IF EXISTS public.register_push_device(TEXT, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION public.register_push_device(p_token TEXT, p_platform TEXT, p_version TEXT DEFAULT NULL)
-RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+RETURNS VOID LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   clean_token TEXT := trim(COALESCE(p_token, ''));
   clean_platform TEXT := lower(trim(COALESCE(p_platform, '')));
@@ -805,8 +806,6 @@ BEGIN
     is_active = true,
     last_seen_at = now(),
     updated_at = now();
-
-  RETURN jsonb_build_object('success', true);
 END $$;
 
 -- 4. Explicit Grants & Revokes across all 26 Functions
