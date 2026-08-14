@@ -709,10 +709,10 @@ async function joinBatch(batchId, el) {
     var r = await API.joinBatch(batchId);
     API.invalidate();
     _exploreEnrollments = null;
-    if (r && r.status === 'waitlisted') { toast(t('waitlisted'), 'warn'); return false; }
-    if (r && r.status === 'already') { toast(t('alreadyIn'), 'info'); return false; }
+    if (r && r.success === false) { toast(r.message || t('alreadyIn'), 'info'); return false; }
+    if (r && (r.status === 'waitlist' || r.status === 'waitlisted')) { toast(r.message || t('waitlisted'), 'warn'); return false; }
     UI.fireConfetti(30);
-    toast(t('joinOk'), 'ok');
+    toast((r && r.message) || t('joinOk'), 'ok');
     if (CURRENT_PROFILE) { try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {} }
     return true;
   };
@@ -844,11 +844,12 @@ async function renderCerts() {
     }
     list.innerHTML = data.map(function (cert) {
       var c = cert.courses || {};
+      var serialCode = cert.serial || cert.serial_number || 'RTC-CERT';
       return '<div class="card p-4 flex items-center gap-3"><div class="pick-ic" style="background:linear-gradient(135deg,' + SEC.safeColor(c.color) + ',#d4af37)"><i class="ph-fill ph-certificate"></i></div>' +
         '<div class="flex-1"><div class="text-sm font-bold">' + esc(c.title || 'دورة') + '</div>' +
         '<div class="text-[11px] text-muted">شهادة إتمام — مركز رسالة</div>' +
-        '<div class="text-[10px] mt-0.5 text-muted" dir="ltr"># ' + esc(cert.serial_number) + '</div></div>' +
-        '<button class="btn btn-teal btn-sm" data-act="downloadCertificate" data-arg1="' + esc(cert.serial_number) + '" data-arg2="' + esc(c.title || '') + '" data-arg3="' + (cert.issued_at || '') + '" data-busy-label="تجهيز"><i class="ph-bold ph-download-simple"></i> PDF</button></div>';
+        '<div class="text-[10px] mt-0.5 text-muted" dir="ltr"># ' + esc(serialCode) + '</div></div>' +
+        '<button class="btn btn-teal btn-sm" data-act="downloadCertificate" data-arg1="' + esc(serialCode) + '" data-arg2="' + esc(c.title || '') + '" data-arg3="' + (cert.issued_at || '') + '" data-busy-label="تجهيز"><i class="ph-bold ph-download-simple"></i> PDF</button></div>';
     }).join('');
   } catch (e) { list.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
@@ -1203,10 +1204,14 @@ async function doCheckin(el) {
   var code = ((document.getElementById('ci-code') || {}).value || '').trim();
   if (code.length < 4) { toast('أدخل الرمز كاملاً', 'err'); return; }
   await runBtn(el, async function () {
-    await API.checkIn(code);
+    var res = await API.checkIn(code);
+    if (res && res.success === false) {
+      toast(res.message || 'رمز الحضور غير صحيح أو الجلسة مغلقة', 'err');
+      return false;
+    }
     UI.fireConfetti(40);
-    toast('تم تسجيل حضورك ✓', 'ok');
-    if (CURRENT_PROFILE) CURRENT_PROFILE = await API.fetchMyProfile();
+    toast((res && res.message) || 'تم تسجيل حضورك بنجاح ✓', 'ok');
+    if (CURRENT_PROFILE) { try { CURRENT_PROFILE = await API.fetchMyProfile(); } catch (e) {} }
     return true;
   }, 'تم الحضور ✓');
 }
@@ -1365,11 +1370,26 @@ async function startTodaySession() {
     box.innerHTML = '<div class="card p-4 text-center"><div class="text-xs text-muted mb-2">امسح أو أدخل الرمز</div>' +
       '<canvas id="qr-canvas" class="mx-auto"></canvas>' +
       '<div class="text-3xl font-black tracking-[0.3em] mt-3" dir="ltr">' + esc(code) + '</div>' +
-      '<div class="text-[10px] text-muted mt-1">محاضرة رقم ' + (_currentSession.session_number || '') + '</div></div>';
+      '<div class="text-[10px] text-muted mt-1">محاضرة رقم ' + (_currentSession.session_number || '') + '</div>' +
+      '<button class="btn btn-danger btn-sm mt-3 w-full" onclick="closeCurrentSession()"><i class="ph-bold ph-lock-key"></i> إغلاق وإنهاء المحاضرة</button></div>';
     if (window.QRCode && QRCode.toCanvas) {
       QRCode.toCanvas(document.getElementById('qr-canvas'), 'RTC-CHECKIN:' + code + '|' + payload, { width: 196, margin: 1 });
     }
   } catch (e) { toast(UI.humanError(e), 'err'); }
+}
+
+async function closeCurrentSession() {
+  if (!_currentSession) { toast('لا توجد جلسة نشطة لإغلاقها', 'info'); return; }
+  UI.showConfirm('إغلاق المحاضرة؟', 'سيتم إبطال رمز الحضور الحالي وتحديث المحاضرات المنجزة.', async function () {
+    try {
+      await API.closeSession(_currentSession.id);
+      var box = document.getElementById('session-qr');
+      if (box) { box.classList.add('hidden'); box.innerHTML = ''; }
+      _currentSession = null;
+      API.invalidate();
+      toast('تم إغلاق المحاضرة بنجاح ✓', 'ok');
+    } catch (e) { toast(UI.humanError(e), 'err'); }
+  }, { danger: true, yesLabel: 'إغلاق المحاضرة' });
 }
 
 async function saveAttendance(el) {
@@ -1613,12 +1633,14 @@ async function renderStaffExcuses() {
   try {
     var rows = await API.fetchExcuses(true);
     el.innerHTML = rows.length ? rows.map(function (x) {
-      return '<div class="card p-3 mb-2"><div class="flex justify-between"><div class="text-sm font-bold">' + esc((x.profiles && x.profiles.full_name) || '') + '</div>' +
-        '<span class="status-chip ' + (x.status === 'approved' ? 'st-a' : x.status === 'rejected' ? 'st-r' : 'st-p') + '">' + esc(x.status) + '</span></div>' +
-        '<div class="text-xs mt-1">' + esc(x.reason) + '</div>' +
-        (x.status === 'pending' ? '<div class="flex gap-2 mt-2"><button class="btn btn-teal btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'approved\')">قبول</button>' +
-          '<button class="btn btn-danger btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'rejected\')">رفض</button></div>' : '') + '</div>';
-    }).join('') : UI.emptyState('ph-first-aid', 'لا طلبات عذر', '');
+      var stLabel = x.status === 'approved' ? 'مقبول ✓' : x.status === 'rejected' ? 'مرفوض ✕' : 'قيد المراجعة';
+      return '<div class="card p-3 mb-2"><div class="flex justify-between items-center"><div class="text-sm font-bold">' + esc((x.profiles && x.profiles.full_name) || 'طالب') + '</div>' +
+        '<span class="status-chip ' + (x.status === 'approved' ? 'st-a' : x.status === 'rejected' ? 'st-r' : 'st-p') + '">' + esc(stLabel) + '</span></div>' +
+        '<div class="text-[11px] text-teal font-bold mt-1">' + esc((x.batches && x.batches.name) || '') + (x.sessions && x.sessions.title ? ' · ' + esc(x.sessions.title) : '') + '</div>' +
+        '<div class="text-xs mt-1 leading-relaxed text-muted">' + esc(x.reason) + '</div>' +
+        (x.status === 'pending' ? '<div class="flex gap-2 mt-3"><button class="btn btn-teal btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'approved\')"><i class="ph-bold ph-check"></i> قبول</button>' +
+          '<button class="btn btn-danger btn-sm flex-1" onclick="reviewEx(\'' + esc(x.id) + '\',\'rejected\')"><i class="ph-bold ph-x"></i> رفض</button></div>' : '') + '</div>';
+    }).join('') : UI.emptyState('ph-first-aid', 'لا توجد طلبات أعذار معلقة', 'ستظهر هنا طلبات الأعذار التي يرسلها الطلاب');
   } catch (e) { el.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
 }
 
@@ -1828,9 +1850,10 @@ async function renderAdminCerts() {
   try {
     var data = await API.fetchCerts(false);
     listEl.innerHTML = data.length ? data.map(function (cert) {
+      var serialCode = cert.serial || cert.serial_number || 'RTC-CERT';
       return '<div class="card p-3 mb-2 flex justify-between"><div><div class="text-sm font-bold">' + esc((cert.profiles && cert.profiles.full_name) || '—') + '</div>' +
         '<div class="text-[11px] text-muted">' + esc((cert.courses && cert.courses.title) || '') + '</div>' +
-        '<div class="text-[10px] text-muted" dir="ltr"># ' + esc(cert.serial_number) + '</div></div>' +
+        '<div class="text-[10px] text-muted" dir="ltr"># ' + esc(serialCode) + '</div></div>' +
         '<div class="text-xs" style="color:var(--teal)">' + new Date(cert.issued_at).toLocaleDateString('ar-EG') + '</div></div>';
     }).join('') : UI.emptyState('ph-certificate', 'لا شهادات صادرة', '');
   } catch (e) { listEl.innerHTML = UI.emptyState('ph-warning', 'تعذر التحميل', UI.humanError(e)); }
