@@ -4,6 +4,253 @@
 --  strict role checks, explicit grant boundaries, and PostgREST reload.
 -- ═══════════════════════════════════════════════════════════════════
 
+-- 0. Ensure all prerequisite tables, columns, and constraints exist idempotently
+CREATE TABLE IF NOT EXISTS public.branches (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug          TEXT UNIQUE NOT NULL,
+  name_ar       TEXT NOT NULL,
+  name_en       TEXT NOT NULL,
+  city          TEXT NOT NULL,
+  address       TEXT,
+  facebook_url  TEXT,
+  whatsapp      TEXT,
+  hotline       TEXT DEFAULT '19450',
+  is_active     BOOLEAN NOT NULL DEFAULT true,
+  sort_order    INT NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  role            VARCHAR(20) NOT NULL DEFAULT 'student',
+  status          VARCHAR(20) NOT NULL DEFAULT 'active',
+  full_name       TEXT NOT NULL DEFAULT 'طالب جديد',
+  email           VARCHAR,
+  phone           TEXT,
+  branch_id       UUID REFERENCES public.branches(id) ON DELETE SET NULL,
+  avatar_url      TEXT,
+  points          INT NOT NULL DEFAULT 0,
+  streak          INT NOT NULL DEFAULT 0,
+  attendance_pct  INT NOT NULL DEFAULT 0,
+  lang            VARCHAR(10) NOT NULL DEFAULT 'ar',
+  dark_mode       BOOLEAN NOT NULL DEFAULT false,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'student';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS full_name TEXT DEFAULT 'طالب جديد';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email VARCHAR;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES public.branches(id) ON DELETE SET NULL;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS points INT DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS streak INT DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS attendance_pct INT DEFAULT 0;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS lang VARCHAR(10) DEFAULT 'ar';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS dark_mode BOOLEAN DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS public.courses (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug            TEXT UNIQUE NOT NULL,
+  title           TEXT NOT NULL,
+  category        TEXT NOT NULL,
+  icon            TEXT NOT NULL DEFAULT 'ph-book-open',
+  color           TEXT NOT NULL DEFAULT '#00288e',
+  sessions_count  INT NOT NULL DEFAULT 6,
+  max_students    INT NOT NULL DEFAULT 25,
+  description     TEXT,
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.batches (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id       UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  instructor_id   UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  branch_id       UUID REFERENCES public.branches(id) ON DELETE SET NULL,
+  name            TEXT NOT NULL,
+  schedule        TEXT,
+  location        TEXT,
+  sessions_done   INT NOT NULL DEFAULT 0,
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS instructor_id UUID REFERENCES public.profiles(id);
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES public.branches(id);
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS schedule TEXT;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS location TEXT;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS sessions_done INT DEFAULT 0;
+ALTER TABLE public.batches ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+
+CREATE TABLE IF NOT EXISTS public.enrollments (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id        UUID NOT NULL REFERENCES public.batches(id) ON DELETE CASCADE,
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  status          VARCHAR(20) NOT NULL DEFAULT 'enrolled',
+  sessions_done   INT NOT NULL DEFAULT 0,
+  attendance_pct  INT NOT NULL DEFAULT 0,
+  joined_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (batch_id, student_id)
+);
+
+ALTER TABLE public.enrollments ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'enrolled';
+ALTER TABLE public.enrollments ADD COLUMN IF NOT EXISTS sessions_done INT NOT NULL DEFAULT 0;
+ALTER TABLE public.enrollments ADD COLUMN IF NOT EXISTS attendance_pct INT NOT NULL DEFAULT 0;
+ALTER TABLE public.enrollments ADD COLUMN IF NOT EXISTS joined_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+CREATE TABLE IF NOT EXISTS public.sessions (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id        UUID NOT NULL REFERENCES public.batches(id) ON DELETE CASCADE,
+  session_number  INT NOT NULL,
+  title           TEXT NOT NULL,
+  session_date    DATE NOT NULL DEFAULT CURRENT_DATE,
+  checkin_code    TEXT,
+  status          VARCHAR(20) NOT NULL DEFAULT 'active',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS checkin_code TEXT;
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS session_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS session_number INT DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS public.attendance (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  status          VARCHAR(20) NOT NULL DEFAULT 'present',
+  checkin_method  VARCHAR(20) NOT NULL DEFAULT 'qr',
+  notes           TEXT,
+  verified_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  verified_by     UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.certs (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  serial          TEXT UNIQUE NOT NULL,
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  course_id       UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  batch_id        UUID REFERENCES public.batches(id) ON DELETE SET NULL,
+  issued_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  qr_code_url     TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (student_id, course_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.excuses (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  batch_id        UUID NOT NULL REFERENCES public.batches(id) ON DELETE CASCADE,
+  session_id      UUID REFERENCES public.sessions(id) ON DELETE CASCADE,
+  reason          TEXT NOT NULL,
+  file_path       TEXT,
+  status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+  reviewer_note   TEXT,
+  reviewed_by     UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  reviewed_at     TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.session_reports (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id            UUID UNIQUE NOT NULL REFERENCES public.sessions(id) ON DELETE CASCADE,
+  instructor_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  summary               TEXT NOT NULL,
+  understanding_score   INT NOT NULL,
+  engagement_score      INT NOT NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.course_ratings (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  course_id       UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  rating          INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment         TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (course_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL DEFAULT '',
+  message         TEXT NOT NULL DEFAULT '',
+  type            TEXT NOT NULL DEFAULT 'announcement',
+  read_at         TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.private_notes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  author_id       UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  body            TEXT NOT NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.push_devices (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  token           TEXT UNIQUE NOT NULL,
+  platform        TEXT NOT NULL,
+  app_version     TEXT,
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.waitlist (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_id        UUID NOT NULL REFERENCES public.batches(id) ON DELETE CASCADE,
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (batch_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.audit_log (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id        UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  action          TEXT NOT NULL,
+  entity          TEXT NOT NULL,
+  entity_id       TEXT,
+  meta            JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.student_badges (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  badge_id        VARCHAR(40) NOT NULL,
+  awarded_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (student_id, badge_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.points_rules (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code            VARCHAR(50) UNIQUE NOT NULL,
+  title           TEXT NOT NULL,
+  amount          INT NOT NULL DEFAULT 10,
+  is_active       BOOLEAN NOT NULL DEFAULT true,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.points_ledger (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id      UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  rule_id         UUID REFERENCES public.points_rules(id) ON DELETE SET NULL,
+  amount          INT NOT NULL,
+  reason          TEXT NOT NULL,
+  created_by      UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- 1. Safely drop any legacy drift signatures if they ever existed in schema cache
 DROP FUNCTION IF EXISTS public.patch_roster(uuid, uuid);
 DROP FUNCTION IF EXISTS public.patch_roster(uuid);
@@ -78,6 +325,44 @@ BEGIN
     END IF;
   END LOOP;
   RETURN array_to_string(out_parts, ' ');
+END $$;
+
+CREATE OR REPLACE FUNCTION public.apply_rule(_student UUID, _code TEXT, _by UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE r public.points_rules%ROWTYPE;
+BEGIN
+  SELECT * INTO r FROM public.points_rules WHERE code = _code;
+  IF NOT FOUND THEN RETURN; END IF;
+  INSERT INTO public.points_ledger (student_id, rule_id, amount, reason, created_by)
+  VALUES (_student, r.id, r.amount, r.title, _by);
+END $$;
+
+CREATE OR REPLACE FUNCTION public.award_badge(_student UUID, _badge TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.student_badges (student_id, badge_id)
+  VALUES (_student, _badge)
+  ON CONFLICT (student_id, badge_id) DO NOTHING;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.refresh_enrollment_progress(_batch UUID, _student UUID)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE done INT;
+BEGIN
+  SELECT COUNT(DISTINCT a.session_id) INTO done
+  FROM public.attendance a
+  JOIN public.sessions s ON s.id = a.session_id
+  WHERE s.batch_id = _batch AND a.student_id = _student
+    AND a.status IN ('present', 'late', 'excused');
+  UPDATE public.enrollments SET sessions_done = done
+   WHERE batch_id = _batch AND student_id = _student;
+END $$;
+
+CREATE OR REPLACE FUNCTION public.write_audit(_action TEXT, _entity TEXT, _id TEXT, _meta JSONB DEFAULT '{}'::jsonb)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.audit_log (actor_id, action, entity, entity_id, meta)
+  VALUES (auth.uid(), _action, _entity, _id, COALESCE(_meta, '{}'::jsonb));
 END $$;
 
 -- 3. The 26 Core Contract RPCs
