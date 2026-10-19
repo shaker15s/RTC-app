@@ -32,7 +32,7 @@
     "esbuild": "^0.25.9",
     "serve": "^14.2.0",
     "sharp": "^0.35.3",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^4.3.3"
   },
   "dependencies": {
     "@aparajita/capacitor-secure-storage": "^8.0.0",
